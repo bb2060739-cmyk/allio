@@ -9,7 +9,7 @@ import {
 } from 'react-router-dom';
 import { Product, Order } from './types';
 import { getProducts, getOrders, getDashboardStats, saveProduct } from './lib/storage';
-import { isAuthenticated, getAdminUser } from './lib/auth';
+import { isAuthenticated, getAdminUser, logoutAdmin } from './lib/auth';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { DashboardOverview } from './components/dashboard/DashboardOverview';
@@ -22,7 +22,7 @@ import { StorefrontCatalog } from './components/landing/StorefrontCatalog';
 import { ProductNotFound } from './components/landing/ProductNotFound';
 import { 
   Smartphone, Monitor, ExternalLink, ArrowRight, 
-  Copy, Check 
+  Copy, Check, LogOut 
 } from 'lucide-react';
 
 /**
@@ -58,13 +58,19 @@ function AppContent() {
       refreshData();
     };
 
+    const handleAuthChange = () => {
+      setIsAuth(isAuthenticated());
+    };
+
     window.addEventListener('allio_orders_updated', handleUpdate);
     window.addEventListener('allio_data_updated', handleUpdate);
+    window.addEventListener('allio_auth_changed', handleAuthChange);
     window.addEventListener('storage', handleUpdate);
 
     return () => {
       window.removeEventListener('allio_orders_updated', handleUpdate);
       window.removeEventListener('allio_data_updated', handleUpdate);
+      window.removeEventListener('allio_auth_changed', handleAuthChange);
       window.removeEventListener('storage', handleUpdate);
     };
   }, []);
@@ -104,6 +110,7 @@ function AppContent() {
           <DynamicLandingPageRoute 
             products={products} 
             isAuth={isAuth} 
+            onAuthChange={refreshData}
           />
         } 
       />
@@ -115,6 +122,7 @@ function AppContent() {
           <DynamicLandingPageRoute 
             products={products} 
             isAuth={isAuth} 
+            onAuthChange={refreshData}
           />
         } 
       />
@@ -131,22 +139,35 @@ function AppContent() {
 function StorefrontRoute({ products, isAuth }: { products: Product[]; isAuth: boolean }) {
   const navigate = useNavigate();
 
+  // If normal customer (unauthenticated), render ONLY clean storefront with no admin banner
+  if (!isAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <StorefrontCatalog
+          products={products}
+          onSelectProduct={(prod) => navigate(`/${prod.slug}`)}
+        />
+      </div>
+    );
+  }
+
+  // If authenticated Admin, show notification bar with shortcut back to /admin
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* If logged-in admin, show subtle notification bar */}
-      {isAuth && (
-        <aside aria-label="شريط تنبيه الإدارة" className="bg-slate-900 border-b border-slate-800 text-white px-4 py-2 flex items-center justify-between text-xs">
+      <aside aria-label="شريط تنبيه الإدارة" className="bg-slate-900 border-b border-slate-800 text-white px-4 py-2 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
           <span className="text-emerald-400 font-semibold">
-            أنت مسجل كمدير متجر. تتصفح الآن المتجر العام كما يراه الزبائن.
+            وضع معاينة المشرف (Admin Mode): تتصفح المتجر العام كمدير. الزبائن لا يرون هذا الشريط.
           </span>
-          <button
-            onClick={() => navigate('/admin')}
-            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition-colors cursor-pointer"
-          >
-            لوحة الإدارة (/admin)
-          </button>
-        </aside>
-      )}
+        </div>
+        <button
+          onClick={() => navigate('/admin')}
+          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition-colors cursor-pointer"
+        >
+          لوحة الإدارة (/admin)
+        </button>
+      </aside>
 
       <StorefrontCatalog
         products={products}
@@ -159,11 +180,20 @@ function StorefrontRoute({ products, isAuth }: { products: Product[]; isAuth: bo
 /**
  * Route Component: Dynamic Individual Landing Page (/:slug or /p/:slug)
  */
-function DynamicLandingPageRoute({ products, isAuth }: { products: Product[]; isAuth: boolean }) {
+function DynamicLandingPageRoute({ 
+  products, 
+  isAuth, 
+  onAuthChange 
+}: { 
+  products: Product[]; 
+  isAuth: boolean; 
+  onAuthChange: () => void; 
+}) {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const [previewDeviceMode, setPreviewDeviceMode] = useState<'desktop' | 'mobile'>('desktop');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [hideAdminBarTemporarily, setHideAdminBarTemporarily] = useState(false);
 
   // If someone somehow reaches /admin through this match, redirect to /admin
   if (slug === 'admin') {
@@ -177,6 +207,38 @@ function DynamicLandingPageRoute({ products, isAuth }: { products: Product[]; is
     return <ProductNotFound slug={slug} />;
   }
 
+  // =========================================================================
+  // 1. NORMAL CUSTOMER VIEW (Unauthenticated)
+  // When visited by a regular customer, the top admin preview bar is 100% hidden.
+  // They see only the clean, ultra-fast public landing page.
+  // =========================================================================
+  if (!isAuth || hideAdminBarTemporarily) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        {/* Floating restore button ONLY if admin temporarily toggled clean view */}
+        {isAuth && hideAdminBarTemporarily && (
+          <button
+            onClick={() => setHideAdminBarTemporarily(false)}
+            title="إظهار شريط أدوات المشرف مجدداً"
+            className="fixed bottom-4 left-4 z-50 px-3 py-1.5 bg-slate-900/90 hover:bg-slate-900 text-emerald-400 border border-slate-700 rounded-full text-xs font-bold shadow-xl transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>شريط المشرف</span>
+            <span className="text-[10px] bg-emerald-950 text-emerald-300 px-1 rounded">إظهار</span>
+          </button>
+        )}
+
+        <PublicProductLanding
+          product={product}
+          onNavigateHome={() => navigate('/')}
+        />
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 2. ADMIN PREVIEW MODE (Authenticated Admin Only)
+  // Shows testing tools: device toggles, unique URL, return to /admin, and customer view toggle
+  // =========================================================================
   const handleCopyLandingUrl = () => {
     const url = `${window.location.origin}/${product.slug}`;
     navigator.clipboard.writeText(url);
@@ -184,61 +246,88 @@ function DynamicLandingPageRoute({ products, isAuth }: { products: Product[]; is
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const handleAdminLogout = () => {
+    if (window.confirm('هل تريد تسجيل الخروج لمعاينة الصفحة كزبون عادي؟')) {
+      logoutAdmin();
+      onAuthChange();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* If logged-in admin, show top admin toolbar for testing and device switching */}
-      {isAuth && (
-        <aside aria-label="شريط أدوات الإدارة" className="bg-slate-900 border-b border-slate-800 text-white px-4 py-2 flex items-center justify-between text-xs sticky top-0 z-50">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/admin')}
-              className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-              <span>العودة للوحة الإدارة (/admin)</span>
-            </button>
-            <div className="hidden sm:flex items-center gap-1.5 font-mono text-[11px] text-slate-400" dir="ltr">
-              <span className="text-emerald-400">Unique URL:</span>
-              <span className="text-white font-bold">/{product.slug}</span>
-            </div>
+      {/* Top Admin Preview & Debug Bar - ONLY VISIBLE TO LOGGED-IN ADMINS */}
+      <aside aria-label="شريط أدوات الإدارة" className="bg-slate-900 border-b border-slate-800 text-white px-4 py-2 flex items-center justify-between text-xs sticky top-0 z-50 shadow-md">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/admin')}
+            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <ArrowRight className="w-3.5 h-3.5" />
+            <span>العودة للوحة الإدارة (/admin)</span>
+          </button>
+          
+          <div className="hidden sm:flex items-center gap-1.5 font-mono text-[11px] text-slate-400" dir="ltr">
+            <span className="text-emerald-400 font-bold">Unique URL:</span>
+            <span className="text-white font-bold bg-slate-800 px-1.5 py-0.5 rounded">/{product.slug}</span>
           </div>
+        </div>
 
-          <div className="flex items-center gap-2">
-            <div className="bg-slate-800 p-0.5 rounded-lg flex items-center gap-1">
-              <button
-                onClick={() => setPreviewDeviceMode('desktop')}
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
-                  previewDeviceMode === 'desktop' ? 'bg-emerald-600 text-white' : 'text-slate-400'
-                }`}
-              >
-                <Monitor className="w-3 h-3" />
-                <span>حاسوب</span>
-              </button>
-              <button
-                onClick={() => setPreviewDeviceMode('mobile')}
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
-                  previewDeviceMode === 'mobile' ? 'bg-emerald-600 text-white' : 'text-slate-400'
-                }`}
-              >
-                <Smartphone className="w-3 h-3" />
-                <span>هاتف 4G</span>
-              </button>
-            </div>
-
+        <div className="flex items-center gap-2">
+          {/* Device Viewport Toggle (Desktop / Mobile 4G) */}
+          <div className="bg-slate-800 p-0.5 rounded-lg flex items-center gap-1">
             <button
-              onClick={handleCopyLandingUrl}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1 cursor-pointer"
+              onClick={() => setPreviewDeviceMode('desktop')}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                previewDeviceMode === 'desktop' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
             >
-              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span className="hidden md:inline">نسخ الرابط الفريد</span>
+              <Monitor className="w-3 h-3" />
+              <span>حاسوب</span>
+            </button>
+            <button
+              onClick={() => setPreviewDeviceMode('mobile')}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                previewDeviceMode === 'mobile' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Smartphone className="w-3 h-3" />
+              <span>هاتف 4G</span>
             </button>
           </div>
-        </aside>
-      )}
 
-      {/* Public Product Landing Content */}
-      <div className={`flex-1 ${previewDeviceMode === 'mobile' && isAuth ? 'py-8 flex justify-center bg-slate-950' : 'bg-slate-50'}`}>
-        {previewDeviceMode === 'mobile' && isAuth ? (
+          {/* Copy Unique URL */}
+          <button
+            onClick={handleCopyLandingUrl}
+            title="نسخ الرابط الفريد للحملة الإعلانية"
+            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1 cursor-pointer"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            <span className="hidden md:inline">نسخ الرابط الفريد</span>
+          </button>
+
+          {/* Toggle Clean Customer View */}
+          <button
+            onClick={() => setHideAdminBarTemporarily(true)}
+            title="إخفاء الشريط لمعاينة ما يراه الزبون العادي تماماً"
+            className="px-2.5 py-1 bg-emerald-950/70 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/60 rounded text-xs font-semibold cursor-pointer"
+          >
+            <span>معاينة كزبون عادي</span>
+          </button>
+
+          {/* Quick Logout to test unauthenticated customer state */}
+          <button
+            onClick={handleAdminLogout}
+            title="تسجيل الخروج لمعاينة كزبون غير مسجل"
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 rounded-lg text-xs cursor-pointer transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </aside>
+
+      {/* Landing Page Canvas */}
+      <div className={`flex-1 ${previewDeviceMode === 'mobile' ? 'py-8 flex justify-center bg-slate-950' : 'bg-slate-50'}`}>
+        {previewDeviceMode === 'mobile' ? (
           <div className="w-full max-w-[420px] bg-white rounded-[40px] shadow-2xl border-8 border-slate-800 overflow-hidden min-h-[820px] flex flex-col">
             <div className="bg-slate-900 py-1 px-6 flex justify-between items-center text-[10px] text-slate-400">
               <span>09:41</span>

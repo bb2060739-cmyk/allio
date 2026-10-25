@@ -84,6 +84,9 @@ export const loginAdmin = (
       sessionStorage.setItem(AUTH_STORAGE_KEY, token);
       sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
     }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('allio_auth_changed', { detail: { isAuth: true } }));
+    }
   } catch (err) {
     console.warn('Storage warning', err);
   }
@@ -97,6 +100,9 @@ export const logoutAdmin = (): void => {
     sessionStorage.removeItem(AUTH_USER_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('allio_auth_changed', { detail: { isAuth: false } }));
+    }
   } catch (err) {
     console.warn('Logout cleanup notice', err);
   }
