@@ -81,14 +81,14 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
     }
   };
 
-  const handleStatusChange = (orderId: string, newStatus: OrderStatus) => {
-    updateOrderStatus(orderId, newStatus);
+  const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+    await updateOrderStatus(orderId, newStatus);
     onOrdersChange();
   };
 
-  const handleDelete = (orderId: string) => {
+  const handleDelete = async (orderId: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا الطلب نهائياً؟')) {
-      deleteOrder(orderId);
+      await deleteOrder(orderId);
       onOrdersChange();
     }
   };

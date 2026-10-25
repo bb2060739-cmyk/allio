@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Products Collection: Public read for customers; write for store managers
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Orders Collection: Public create for COD customers; read and update for orders management
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create: if request.resource.data.customerName is string 
+                    && request.resource.data.phoneNumber is string
+                    && request.resource.data.city is string
+                    && request.resource.data.totalPrice is number;
+      allow update, delete: if true;
+    }
+  }
+}

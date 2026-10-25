@@ -23,9 +23,9 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
 }) => {
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (window.confirm(`هل أنت متأكد من حذف صفحة الهبوط "${name}"؟`)) {
-      deleteProduct(id);
+      await deleteProduct(id);
       onProductsChange();
     }
   };

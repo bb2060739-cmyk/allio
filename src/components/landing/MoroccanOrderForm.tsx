@@ -53,7 +53,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPhoneTouched(true);
 
@@ -72,7 +72,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     setIsSubmitting(true);
 
     try {
-      const newOrder = createOrder({
+      const newOrder = await createOrder({
         productId: product.id,
         productName: product.name,
         customerName: customerName.trim(),

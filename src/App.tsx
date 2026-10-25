@@ -8,7 +8,7 @@ import {
   Navigate 
 } from 'react-router-dom';
 import { Product, Order } from './types';
-import { getProducts, getOrders, getDashboardStats, saveProduct } from './lib/storage';
+import { getProducts, getOrders, getDashboardStats, saveProduct, initFirestoreRealtimeSync } from './lib/storage';
 import { isAuthenticated, getAdminUser, logoutAdmin } from './lib/auth';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { AdminLayout } from './components/admin/AdminLayout';
@@ -52,6 +52,8 @@ function AppContent() {
   };
 
   useEffect(() => {
+    // Initialize live Firestore sync across all devices
+    initFirestoreRealtimeSync();
     refreshData();
 
     const handleUpdate = () => {
@@ -62,12 +64,14 @@ function AppContent() {
       setIsAuth(isAuthenticated());
     };
 
+    window.addEventListener('allio_products_updated', handleUpdate);
     window.addEventListener('allio_orders_updated', handleUpdate);
     window.addEventListener('allio_data_updated', handleUpdate);
     window.addEventListener('allio_auth_changed', handleAuthChange);
     window.addEventListener('storage', handleUpdate);
 
     return () => {
+      window.removeEventListener('allio_products_updated', handleUpdate);
       window.removeEventListener('allio_orders_updated', handleUpdate);
       window.removeEventListener('allio_data_updated', handleUpdate);
       window.removeEventListener('allio_auth_changed', handleAuthChange);
@@ -388,8 +392,8 @@ function AdminRoute({
     );
   }
 
-  const handleSaveProduct = (productData: Partial<Product> & { name: string; price: number }) => {
-    saveProduct(productData);
+  const handleSaveProduct = async (productData: Partial<Product> & { name: string; price: number }) => {
+    await saveProduct(productData);
     onDataChange();
     setEditingProduct(null);
   };

@@ -5,7 +5,7 @@ import { X, Plus, Trash2, Sparkles, Tag, Shield, Globe } from 'lucide-react';
 interface NewProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (product: Partial<Product> & { name: string; price: number }) => void;
+  onSave: (product: Partial<Product> & { name: string; price: number }) => void | Promise<void>;
   editingProduct?: Product | null;
 }
 
@@ -110,11 +110,11 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
     setImages(images.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !price) return;
 
-    onSave({
+    await onSave({
       id: editingProduct?.id,
       name: name.trim(),
       slug: slug.trim() || 'product-' + Date.now(),

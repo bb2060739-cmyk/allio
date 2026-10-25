@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Product and landing page configuration for allio COD store",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "currency": { "type": "string" },
+        "shortDescription": { "type": "string" },
+        "fullDescription": { "type": "string" },
+        "features": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "images": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "badge": { "type": "string" },
+        "freeShipping": { "type": "boolean" },
+        "inStock": { "type": "boolean" },
+        "stockCount": { "type": "number" },
+        "fbPixelId": { "type": "string" },
+        "tiktokPixelId": { "type": "string" },
+        "views": { "type": "number" },
+        "salesCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "slug", "price"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Cash on Delivery (COD) customer order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "customerName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "city": { "type": "string" },
+        "address": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "shippingFee": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string" },
+        "notes": { "type": "string" },
+        "fbPixelFired": { "type": "boolean" },
+        "tiktokPixelFired": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["orderNumber", "customerName", "phoneNumber", "city", "totalPrice", "status"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Product catalog and landing pages collection"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer COD incoming orders collection"
+    }
+  }
+}
