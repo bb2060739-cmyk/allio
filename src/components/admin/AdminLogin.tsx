@@ -52,7 +52,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
           </div>
 
           <h1 className="text-3xl font-black tracking-tight text-white font-sans">
-            allio<span className="text-emerald-500">.ma</span>
+            Allio
           </h1>
           <p className="text-xs text-slate-400">
             سجّل دخولك للوصول إلى لوحة التحكم، الطلبات الواردة، وإدارة صفحات الهبوط
@@ -148,7 +148,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
             className="text-xs text-slate-500 hover:text-slate-300 transition-colors inline-flex items-center gap-1.5"
           >
             <ArrowRight className="w-3.5 h-3.5" />
-            <span>العودة إلى المتجر العام للزبائن (allio.shop)</span>
+            <span>العودة إلى المتجر العام للزبائن (Allio)</span>
           </button>
         </div>
       </div>

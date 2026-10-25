@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { Order, Product } from '../../types';
-import { generateWhatsAppConfirmLink } from '../../lib/storage';
-import { CheckCircle2, PhoneCall, Truck, ShieldCheck, ArrowRight, MessageSquare, Package, Clock } from 'lucide-react';
+import { CheckCircle2, Truck, ShieldCheck, ArrowRight, Package, Clock } from 'lucide-react';
 
 interface ThankYouPageProps {
   order: Order;
@@ -18,8 +17,6 @@ export const ThankYouPage: React.FC<ThankYouPageProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const whatsappLink = generateWhatsAppConfirmLink(order);
-
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-xl mx-auto space-y-6">
@@ -35,10 +32,10 @@ export const ThankYouPage: React.FC<ThankYouPageProps> = ({
               <span>رقم الطلب: {order.orderNumber}</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-black text-slate-900">
-              شكراً لك! تم استلام طلبك بنجاح
+              شكراً لطلبكم! تم تسجيل طلبكم بنجاح
             </h1>
             <p className="text-slate-600 text-sm md:text-base leading-relaxed">
-              سعداء بثقتكم في <span className="font-bold text-emerald-700">allio</span>. لقد سجلنا طلبيتكم وسيتم تجهيزها فوراً للشحن.
+              شكراً لطلبكم! سنتصل بكم قريباً لتأكيد الطلب. سعداء بثقتكم في <span className="font-bold text-emerald-700">Allio</span> وسيتم تجهيز طلبيتكم فوراً للشحن.
             </p>
           </div>
 
@@ -56,22 +53,6 @@ export const ThankYouPage: React.FC<ThankYouPageProps> = ({
                 📦 <strong>المعاينة قبل الدفع:</strong> يحق لكم فحص المنتج والتأكد من جودته ومطابقته قبل دفع أي درهم للموزع.
               </p>
             </div>
-          </div>
-
-          {/* WhatsApp Direct Confirmation Button */}
-          <div className="pt-1">
-            <a
-              href={whatsappLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm md:text-base transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-            >
-              <MessageSquare className="w-5 h-5 fill-current" />
-              <span>تأكيد سريع ومباشر عبر واتساب (WhatsApp)</span>
-            </a>
-            <span className="block text-[11px] text-slate-400 mt-1.5">
-              اضغط هنا إذا كنت ترغب في تسريع موعد الشحن فوراً
-            </span>
           </div>
 
           {/* Itemized Order Receipt */}

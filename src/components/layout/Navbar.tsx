@@ -27,7 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onSelectTab('overview')}
             className="text-2xl font-black tracking-tight text-emerald-600 font-sans hover:opacity-90 transition-opacity cursor-pointer"
           >
-            allio<span className="text-slate-900">.ma</span>
+            Allio
           </button>
         </div>
 

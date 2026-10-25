@@ -72,8 +72,11 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-2xl font-black tracking-tight text-emerald-600 font-sans">
-              allio<span className="text-slate-900">.shop</span>
+            <span 
+              onClick={onNavigateHome}
+              className={`text-2xl font-black tracking-tight text-emerald-600 font-sans ${onNavigateHome ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+            >
+              Allio
             </span>
             <span className="hidden sm:inline-block text-xs text-slate-400 border-r border-slate-200 pr-3 mr-1">
               متجر الدفع عند الاستلام بالمغرب

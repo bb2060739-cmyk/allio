@@ -42,7 +42,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xl font-black text-emerald-400 font-sans tracking-tight">
-                allio<span className="text-white text-xs font-semibold px-1.5 py-0.5 mr-1.5 bg-slate-800 rounded border border-slate-700">Admin</span>
+                Allio<span className="text-white text-xs font-semibold px-1.5 py-0.5 mr-1.5 bg-slate-800 rounded border border-slate-700">Admin</span>
               </span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/20 text-[11px] text-emerald-400">

@@ -24,7 +24,7 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = ({
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-black text-emerald-600 font-sans tracking-tight">
-              allio<span className="text-slate-900">.shop</span>
+              Allio
             </span>
           </div>
 
