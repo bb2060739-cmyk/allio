@@ -102,21 +102,32 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                   </div>
 
                   {/* Public Link Bar */}
-                  <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-lg p-2 text-xs">
-                    <span className="font-mono text-[11px] text-slate-600 truncate max-w-[180px]" dir="ltr">
-                      allio.shop/p/{product.slug}
-                    </span>
-                    <button
-                      onClick={() => handleCopyLink(product.slug)}
-                      title="نسخ الرابط"
-                      className="p-1 text-slate-400 hover:text-emerald-600 transition-colors"
-                    >
-                      {copiedSlug === product.slug ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                  <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-xs">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] text-slate-400 font-medium">الرابط الفريد لصفحة الهبوط:</span>
+                      <span className="font-mono text-xs font-bold text-emerald-800 truncate" dir="ltr">
+                        allio.shop/{product.slug}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleCopyLink(product.slug)}
+                        title="نسخ الرابط المباشر للحملة"
+                        className="px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-emerald-700 hover:border-emerald-300 transition-all flex items-center gap-1 text-[11px] font-bold"
+                      >
+                        {copiedSlug === product.slug ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-600">تم النسخ</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>نسخ</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Pixels Status */}

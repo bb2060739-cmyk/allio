@@ -224,18 +224,21 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  رابط الصفحة (Slug):
+                  الرابط الفريد لصفحة الهبوط (Unique URL):
                 </label>
                 <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500" dir="ltr">
-                  <span>allio.shop/p/</span>
+                  <span className="text-emerald-700 font-bold">allio.shop/</span>
                   <input
                     type="text"
                     value={slug}
                     onChange={(e) => setSlug(e.target.value)}
-                    placeholder="product-slug"
-                    className="flex-1 bg-transparent border-0 outline-none font-mono text-slate-800"
+                    placeholder="product-1"
+                    className="flex-1 bg-transparent border-0 outline-none font-mono text-slate-800 font-semibold"
                   />
                 </div>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  يمكنك تخصيص الرابط مثل: watch-1 أو argan-bio
+                </span>
               </div>
 
               <div>
