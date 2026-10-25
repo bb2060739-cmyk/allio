@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { loginAdmin, DEFAULT_ADMIN_CREDENTIALS } from '../../lib/auth';
+import { loginAdmin } from '../../lib/auth';
 import { 
   ShieldCheck, Lock, Mail, Eye, EyeOff, 
-  ArrowRight, AlertCircle, Sparkles, KeyRound 
+  ArrowRight, AlertCircle, KeyRound 
 } from 'lucide-react';
 
 interface AdminLoginProps {
@@ -35,12 +35,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
         setIsLoading(false);
       }
     }, 400);
-  };
-
-  const fillDemoCredentials = () => {
-    setEmail(DEFAULT_ADMIN_CREDENTIALS.email);
-    setPassword(DEFAULT_ADMIN_CREDENTIALS.password);
-    setError(null);
   };
 
   return (
@@ -87,7 +81,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                   dir="ltr"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@allio.ma"
+                  placeholder="name@example.com"
                   className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs md:text-sm font-mono outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-slate-600"
                 />
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -145,27 +139,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               <span>{isLoading ? 'جاري التحقق...' : 'تسجيل الدخول إلى لوحة التحكم'}</span>
             </button>
           </form>
-
-          {/* Quick-fill helper for test credentials */}
-          <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-3 text-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                بيانات الدخول الافتراضية للتاجر:
-              </span>
-              <button
-                type="button"
-                onClick={fillDemoCredentials}
-                className="text-emerald-400 hover:underline font-bold text-[11px]"
-              >
-                تعبئة تلقائية
-              </button>
-            </div>
-            <div className="font-mono text-[11px] text-slate-500 space-y-0.5" dir="ltr">
-              <div>Email: <strong className="text-slate-300">admin@allio.ma</strong></div>
-              <div>Password: <strong className="text-slate-300">admin123@allio</strong></div>
-            </div>
-          </div>
         </div>
 
         {/* Back to Public Site link */}
