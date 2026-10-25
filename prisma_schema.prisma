@@ -1,0 +1,64 @@
+// Prisma / MongoDB Schema for allio COD Moroccan Platform
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum OrderStatus {
+  new
+  confirmed
+  shipped
+  delivered
+  cancelled
+}
+
+model Product {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  slug             String   @unique
+  name             String
+  price            Float    // Price in Moroccan Dirhams (DH)
+  originalPrice    Float?
+  currency         String   @default("DH")
+  shortDescription String
+  fullDescription  String
+  features         String[]
+  images           String[]
+  badge            String?
+  freeShipping     Boolean  @default(true)
+  inStock          Boolean  @default(true)
+  stockCount       Int      @default(15)
+  fbPixelId        String?
+  tiktokPixelId    String?
+  viewsCount       Int      @default(0)
+  salesCount       Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  orders           Order[]
+}
+
+model Order {
+  id               String      @id @default(auto()) @map("_id") @db.ObjectId
+  orderNumber      String      @unique
+  productId        String?     @db.ObjectId
+  product          Product?    @relation(fields: [productId], references: [id])
+  productName      String
+  customerName     String
+  phoneNumber      String      // Moroccan Phone: 06..., 07..., 05...
+  city             String      // Moroccan City: Casablanca, Rabat, Tangier...
+  address          String
+  quantity         Int         @default(1)
+  unitPrice        Float
+  shippingFee      Float       @default(0)
+  totalPrice       Float
+  status           OrderStatus @default(new)
+  notes            String?
+  fbPixelFired     Boolean     @default(false)
+  tiktokPixelFired Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}

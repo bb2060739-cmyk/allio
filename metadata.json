@@ -1,0 +1,6 @@
+{
+  "name": "allio - منصة التجارة الإلكترونية والدفع عند الاستلام بالمغرب",
+  "description": "منصة allio المتكاملة لإنشاء صفحات هبوط فائقة السرعة للتجارة الإلكترونية والدفع عند الاستلام (COD) في المغرب مع إدارة الطلبات وتتبع الحملات الإعلانية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
