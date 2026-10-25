@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Order, OrderStatus } from '../../types';
 import { 
   updateOrderStatus, 
@@ -8,7 +8,7 @@ import {
 } from '../../lib/storage';
 import { 
   Search, Download, MessageSquare, Trash2, 
-  Clock, CheckCircle, Truck, XCircle, PackageCheck, AlertCircle 
+  Clock, CheckCircle, Truck, XCircle, PackageCheck, AlertCircle, RefreshCw 
 } from 'lucide-react';
 
 interface OrdersManagerProps {
@@ -23,6 +23,29 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedCityFilter, setSelectedCityFilter] = useState<string>('all');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      onOrdersChange();
+    };
+
+    window.addEventListener('allio_orders_updated', handleUpdate);
+    window.addEventListener('allio_data_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('allio_orders_updated', handleUpdate);
+      window.removeEventListener('allio_data_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, [onOrdersChange]);
+
+  const handleManualRefresh = () => {
+    setIsRefreshing(true);
+    onOrdersChange();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Status labels & color badge styles
   const statusConfig: Record<OrderStatus, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
@@ -117,6 +140,15 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
               <option key={city} value={city}>{city}</option>
             ))}
           </select>
+
+          {/* Live Refresh Button */}
+          <button
+            onClick={handleManualRefresh}
+            title="تحديث قائمة الطلبات الآن"
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex items-center justify-center cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
+          </button>
 
           {/* Export to Excel / CSV */}
           <button

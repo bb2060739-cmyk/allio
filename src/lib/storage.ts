@@ -120,6 +120,12 @@ export const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'creat
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
   }
 
+  // Notify active components immediately
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: newOrder }));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: newOrder } }));
+  }
+
   return newOrder;
 };
 
@@ -130,6 +136,10 @@ export const updateOrderStatus = (orderId: string, status: OrderStatus): boolean
     orders[index].status = status;
     orders[index].updatedAt = new Date().toISOString();
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: orders[index] }));
+      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: orders[index] } }));
+    }
     return true;
   }
   return false;
@@ -139,6 +149,10 @@ export const deleteOrder = (orderId: string): boolean => {
   const orders = getOrders();
   const filtered = orders.filter(o => o.id !== orderId);
   localStorage.setItem(ORDERS_KEY, JSON.stringify(filtered));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('allio_orders_updated'));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders' } }));
+  }
   return true;
 };
 

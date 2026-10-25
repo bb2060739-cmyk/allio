@@ -86,23 +86,36 @@ export default function App() {
 
     const handlePopState = () => {
       parseCurrentUrl();
+      refreshData();
     };
 
     const handleHashChange = () => {
       parseCurrentUrl();
+      refreshData();
+    };
+
+    const handleDataUpdated = () => {
+      refreshData();
     };
 
     window.addEventListener('popstate', handlePopState);
     window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('allio_orders_updated', handleDataUpdated);
+    window.addEventListener('allio_data_updated', handleDataUpdated);
+    window.addEventListener('storage', handleDataUpdated);
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('allio_orders_updated', handleDataUpdated);
+      window.removeEventListener('allio_data_updated', handleDataUpdated);
+      window.removeEventListener('storage', handleDataUpdated);
     };
   }, [parseCurrentUrl]);
 
   // Route Navigators
   const navigateToRoute = (route: 'store' | 'admin' | 'landing', slug?: string) => {
+    refreshData();
     if (route === 'admin') {
       window.history.pushState({}, '', '/admin');
       setCurrentRoute('admin');
@@ -163,7 +176,10 @@ export default function App() {
       <AdminLayout
         user={getAdminUser()}
         activeTab={adminTab}
-        onSelectTab={(tab) => setAdminTab(tab)}
+        onSelectTab={(tab) => {
+          setAdminTab(tab);
+          refreshData();
+        }}
         onOpenCreateProduct={() => {
           setEditingProduct(null);
           setIsCreateModalOpen(true);
