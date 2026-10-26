@@ -17,13 +17,31 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
   const formId = useId();
   const [customerName, setCustomerName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [city, setCity] = useState('الدار البيضاء');
+  const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [phoneTouched, setPhoneTouched] = useState(false);
   const [hasStartedForm, setHasStartedForm] = useState(false);
+
+  // Field errors & touched state
+  const [errors, setErrors] = useState<{
+    customerName?: string;
+    phoneNumber?: string;
+    city?: string;
+    address?: string;
+  }>({});
+  const [touched, setTouched] = useState<{
+    customerName: boolean;
+    phoneNumber: boolean;
+    city: boolean;
+    address: boolean;
+  }>({
+    customerName: false,
+    phoneNumber: false,
+    city: false,
+    address: false,
+  });
 
   // Validate Moroccan Phone Number (10 digits starting with 06, 07, or 05)
   const cleanPhone = phoneNumber.replace(/\s+/g, '').replace(/-/g, '');
@@ -53,19 +71,139 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     }
   };
 
+  // Validation function for all strictly required fields
+  const validateFields = (values: {
+    customerName: string;
+    phoneNumber: string;
+    city: string;
+    address: string;
+  }) => {
+    const errs: {
+      customerName?: string;
+      phoneNumber?: string;
+      city?: string;
+      address?: string;
+    } = {};
+
+    // 1. Full Name (الاسم الكامل)
+    if (!values.customerName.trim()) {
+      errs.customerName = 'المرجو إدخال الاسم الكامل (هذا الحقل إجباري)';
+    } else if (values.customerName.trim().length < 3) {
+      errs.customerName = 'المرجو إدخال اسم كامل صحيح (3 أحرف على الأقل)';
+    }
+
+    // 2. Phone Number (رقم الهاتف)
+    const cleaned = values.phoneNumber.replace(/\s+/g, '').replace(/-/g, '');
+    if (!values.phoneNumber.trim()) {
+      errs.phoneNumber = 'المرجو إدخال رقم الهاتف (هذا الحقل إجباري)';
+    } else if (!/^(06|07|05)\d{8}$/.test(cleaned)) {
+      errs.phoneNumber = 'رقم غير صحيح. يجب أن يتكون من 10 أرقام ويبدأ بـ 06 أو 07 أو 05 (مثال: 0612345678)';
+    }
+
+    // 3. City (المدينة)
+    if (!values.city || !values.city.trim()) {
+      errs.city = 'المرجو اختيار المدينة (هذا الحقل إجباري)';
+    }
+
+    // 4. Address (العنوان)
+    if (!values.address.trim()) {
+      errs.address = 'المرجو إدخال العنوان السكني أو الحي (هذا الحقل إجباري)';
+    } else if (values.address.trim().length < 4) {
+      errs.address = 'المرجو إدخال عنوان سكني أو اسم الحي بشكل واضح';
+    }
+
+    return errs;
+  };
+
+  // Field change handlers with live error clearing
+  const handleNameChange = (val: string) => {
+    setCustomerName(val);
+    if (touched.customerName) {
+      if (!val.trim()) {
+        setErrors(prev => ({ ...prev, customerName: 'المرجو إدخال الاسم الكامل (هذا الحقل إجباري)' }));
+      } else if (val.trim().length < 3) {
+        setErrors(prev => ({ ...prev, customerName: 'المرجو إدخال اسم كامل صحيح (3 أحرف على الأقل)' }));
+      } else {
+        setErrors(prev => ({ ...prev, customerName: undefined }));
+      }
+    }
+  };
+
+  const handlePhoneChange = (val: string) => {
+    setPhoneNumber(val);
+    if (touched.phoneNumber) {
+      const cleaned = val.replace(/\s+/g, '').replace(/-/g, '');
+      if (!val.trim()) {
+        setErrors(prev => ({ ...prev, phoneNumber: 'المرجو إدخال رقم الهاتف (هذا الحقل إجباري)' }));
+      } else if (!/^(06|07|05)\d{8}$/.test(cleaned)) {
+        setErrors(prev => ({ ...prev, phoneNumber: 'رقم غير صحيح. يجب أن يتكون من 10 أرقام ويبدأ بـ 06 أو 07 أو 05 (مثال: 0612345678)' }));
+      } else {
+        setErrors(prev => ({ ...prev, phoneNumber: undefined }));
+      }
+    }
+  };
+
+  const handleCityChange = (val: string) => {
+    setCity(val);
+    if (touched.city) {
+      if (!val.trim()) {
+        setErrors(prev => ({ ...prev, city: 'المرجو اختيار المدينة (هذا الحقل إجباري)' }));
+      } else {
+        setErrors(prev => ({ ...prev, city: undefined }));
+      }
+    }
+  };
+
+  const handleAddressChange = (val: string) => {
+    setAddress(val);
+    if (touched.address) {
+      if (!val.trim()) {
+        setErrors(prev => ({ ...prev, address: 'المرجو إدخال العنوان السكني أو الحي (هذا الحقل إجباري)' }));
+      } else if (val.trim().length < 4) {
+        setErrors(prev => ({ ...prev, address: 'المرجو إدخال عنوان سكني أو اسم الحي بشكل واضح' }));
+      } else {
+        setErrors(prev => ({ ...prev, address: undefined }));
+      }
+    }
+  };
+
+  const handleBlur = (field: 'customerName' | 'phoneNumber' | 'city' | 'address') => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    const currentValidation = validateFields({ customerName, phoneNumber, city, address });
+    setErrors(prev => ({ ...prev, [field]: currentValidation[field] }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPhoneTouched(true);
 
-    if (!customerName.trim()) {
-      return;
-    }
+    // Mark all as touched
+    setTouched({
+      customerName: true,
+      phoneNumber: true,
+      city: true,
+      address: true
+    });
 
-    if (!isPhoneValid) {
-      return;
-    }
+    const validationErrors = validateFields({
+      customerName,
+      phoneNumber,
+      city,
+      address
+    });
 
-    if (!city) {
+    setErrors(validationErrors);
+
+    // If any validation errors exist, halt and focus the first invalid field
+    if (Object.keys(validationErrors).length > 0) {
+      if (validationErrors.customerName) {
+        document.getElementById(`${formId}-name`)?.focus();
+      } else if (validationErrors.phoneNumber) {
+        document.getElementById(`${formId}-phone`)?.focus();
+      } else if (validationErrors.city) {
+        document.getElementById(`${formId}-city`)?.focus();
+      } else if (validationErrors.address) {
+        document.getElementById(`${formId}-address`)?.focus();
+      }
       return;
     }
 
@@ -78,7 +216,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
         customerName: customerName.trim(),
         phoneNumber: cleanPhone,
         city: city,
-        address: address.trim() || 'العنوان عبر الهاتف مع الموزع',
+        address: address.trim(),
         quantity: quantity,
         unitPrice: product.price,
         shippingFee: 0,
@@ -124,7 +262,17 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-5 md:p-8 space-y-6 text-slate-800">
+      <form onSubmit={handleSubmit} noValidate className="p-5 md:p-8 space-y-6 text-slate-800">
+        {/* Global validation alert if form has validation errors */}
+        {Object.values(errors).some(Boolean) && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 text-red-800 text-xs flex items-center gap-2.5 shadow-xs">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+            <span className="font-semibold leading-relaxed">
+              يرجى ملء جميع الحقول الإجبارية المشار إليها بعلامة (*) للمتابعة وتأكيد طلبكم.
+            </span>
+          </div>
+        )}
+
         {/* Quantity / Bundle Selection */}
         <div className="space-y-3">
           <label className="block text-sm font-bold text-slate-900">
@@ -196,30 +344,40 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
           </div>
         </div>
 
-        {/* Customer Information Form */}
+        {/* Customer Information Form - Strictly Required Fields */}
         <div className="space-y-4 pt-2">
-          {/* Full Name */}
+          {/* Full Name (الاسم الكامل) - Strictly Required */}
           <div>
             <label htmlFor={`${formId}-name`} className="block text-sm font-semibold text-slate-800 mb-1.5">
-              الاسم الكامل <span className="text-red-500">*</span>
+              الاسم الكامل <span className="text-red-500 font-bold">*</span>
             </label>
             <input
               id={`${formId}-name`}
               type="text"
-              required
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={(e) => handleNameChange(e.target.value)}
+              onBlur={() => handleBlur('customerName')}
               onFocus={handleFieldFocus}
               placeholder="مثال: محمد العلوي"
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900 outline-none transition-all placeholder:text-slate-400 text-sm md:text-base"
+              className={`w-full px-4 py-3 rounded-xl border outline-none transition-all placeholder:text-slate-400 text-sm md:text-base ${
+                errors.customerName
+                  ? 'border-red-500 bg-red-50/20 focus:ring-2 focus:ring-red-500/20 text-slate-900'
+                  : 'border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900'
+              }`}
             />
+            {errors.customerName && (
+              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{errors.customerName}</span>
+              </p>
+            )}
           </div>
 
-          {/* Moroccan Phone Number with Instant Validation */}
+          {/* Moroccan Phone Number (رقم الهاتف) - Strictly Required */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label htmlFor={`${formId}-phone`} className="block text-sm font-semibold text-slate-800">
-                رقم الهاتف (الواتساب) <span className="text-red-500">*</span>
+                رقم الهاتف (الواتساب) <span className="text-red-500 font-bold">*</span>
               </label>
               <span className="text-xs text-slate-500 flex items-center gap-1">
                 <PhoneCall className="w-3 h-3 text-emerald-600" />
@@ -231,40 +389,37 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
               <input
                 id={`${formId}-phone`}
                 type="tel"
-                required
                 dir="ltr"
                 value={phoneNumber}
-                onChange={(e) => {
-                  setPhoneNumber(e.target.value);
-                  setPhoneTouched(true);
-                }}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                onBlur={() => handleBlur('phoneNumber')}
                 onFocus={handleFieldFocus}
                 placeholder="0612345678"
                 maxLength={14}
                 className={`w-full px-4 py-3 rounded-xl border text-left font-mono tracking-wider outline-none transition-all text-base ${
-                  phoneTouched && cleanPhone.length > 0
-                    ? isPhoneValid
-                      ? 'border-emerald-500 bg-emerald-50/20 focus:ring-2 focus:ring-emerald-500/20'
-                      : 'border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-500/20'
-                    : 'border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20'
+                  errors.phoneNumber
+                    ? 'border-red-500 bg-red-50/20 focus:ring-2 focus:ring-red-500/20 text-slate-900'
+                    : isPhoneValid
+                    ? 'border-emerald-500 bg-emerald-50/20 focus:ring-2 focus:ring-emerald-500/20 text-slate-900'
+                    : 'border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900'
                 }`}
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-medium">🇲🇦 +212</span>
-                {phoneTouched && isPhoneValid && (
+                {isPhoneValid && !errors.phoneNumber && (
                   <Check className="w-4 h-4 text-emerald-600" />
                 )}
               </div>
             </div>
 
-            {/* Real-time Phone Feedback */}
-            {phoneTouched && !isPhoneValid && cleanPhone.length > 0 && (
-              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>رقم غير صحيح. يجب أن يتكون من 10 أرقام ويبدأ بـ 06 أو 07 أو 05 (مثال: 0612345678)</span>
+            {/* Real-time Phone Feedback / Error */}
+            {errors.phoneNumber && (
+              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{errors.phoneNumber}</span>
               </p>
             )}
-            {phoneTouched && isPhoneValid && (
+            {!errors.phoneNumber && isPhoneValid && (
               <p className="mt-1.5 text-xs text-emerald-700 flex items-center gap-1">
                 <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
                 <span>رقم هاتف مغربي صحيح ✓</span>
@@ -272,19 +427,25 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
             )}
           </div>
 
-          {/* Moroccan City Dropdown Select */}
+          {/* Moroccan City Dropdown (المدينة) - Strictly Required */}
           <div>
             <label htmlFor={`${formId}-city`} className="block text-sm font-semibold text-slate-800 mb-1.5">
-              المدينة <span className="text-red-500">*</span>
+              المدينة <span className="text-red-500 font-bold">*</span>
             </label>
             <div className="relative">
               <select
                 id={`${formId}-city`}
                 value={city}
-                onChange={(e) => setCity(e.target.value)}
+                onChange={(e) => handleCityChange(e.target.value)}
+                onBlur={() => handleBlur('city')}
                 onFocus={handleFieldFocus}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900 outline-none transition-all appearance-none bg-white text-sm md:text-base cursor-pointer"
+                className={`w-full px-4 py-3 rounded-xl border outline-none transition-all appearance-none bg-white text-sm md:text-base cursor-pointer ${
+                  errors.city
+                    ? 'border-red-500 bg-red-50/20 focus:ring-2 focus:ring-red-500/20 text-slate-900'
+                    : 'border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900'
+                }`}
               >
+                <option value="">-- المرجو اختيار المدينة (إجباري) --</option>
                 {MOROCCAN_CITIES.map((c) => (
                   <option key={c.id} value={c.nameAr}>
                     {c.nameAr} ({c.nameFr}) — {c.shippingDelay}
@@ -295,26 +456,44 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
                 ▼
               </div>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
-              <Truck className="w-3 h-3 text-emerald-600" />
-              <span>التوصيل مجاني 100% إلى جميع المدن المغربية المسجلة</span>
-            </p>
+            {errors.city ? (
+              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{errors.city}</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
+                <Truck className="w-3 h-3 text-emerald-600" />
+                <span>التوصيل مجاني 100% إلى جميع المدن المغربية المسجلة</span>
+              </p>
+            )}
           </div>
 
-          {/* Address */}
+          {/* Address (العنوان) - Strictly Required */}
           <div>
             <label htmlFor={`${formId}-address`} className="block text-sm font-semibold text-slate-800 mb-1.5">
-              العنوان السكني أو الحي <span className="text-slate-400 text-xs">(لتسهيل وصول الموزع)</span>
+              العنوان السكني أو الحي <span className="text-red-500 font-bold">*</span>
             </label>
             <input
               id={`${formId}-address`}
               type="text"
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={(e) => handleAddressChange(e.target.value)}
+              onBlur={() => handleBlur('address')}
               onFocus={handleFieldFocus}
-              placeholder="مثال: حي السلام، قرب مسجد بدر، رقم المنزل 12"
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900 outline-none transition-all placeholder:text-slate-400 text-sm md:text-base"
+              placeholder="مثال: حي السلام، شارع القدس، إقامة الياسمين عمارة 4 شقة 2"
+              className={`w-full px-4 py-3 rounded-xl border outline-none transition-all placeholder:text-slate-400 text-sm md:text-base ${
+                errors.address
+                  ? 'border-red-500 bg-red-50/20 focus:ring-2 focus:ring-red-500/20 text-slate-900'
+                  : 'border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900'
+              }`}
             />
+            {errors.address && (
+              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                <span>{errors.address}</span>
+              </p>
+            )}
           </div>
 
           {/* Notes (Optional) */}
