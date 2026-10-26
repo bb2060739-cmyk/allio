@@ -7,13 +7,15 @@ import {
   useNavigate, 
   Navigate 
 } from 'react-router-dom';
-import { Product, Order } from './types';
-import { getProducts, getOrders, getDashboardStats, saveProduct, initFirestoreRealtimeSync } from './lib/storage';
+import { Product, Order, Store } from './types';
+import { getProducts, getOrders, getDashboardStats, saveProduct, initFirestoreRealtimeSync, getStores } from './lib/storage';
 import { isAuthenticated, getAdminUser, logoutAdmin } from './lib/auth';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { DashboardOverview } from './components/dashboard/DashboardOverview';
 import { LandingPagesManager } from './components/dashboard/LandingPagesManager';
+import { StoresManager } from './components/dashboard/StoresManager';
+import { DesignEditor } from './components/dashboard/DesignEditor';
 import { OrdersManager } from './components/dashboard/OrdersManager';
 import { NewProductModal } from './components/dashboard/NewProductModal';
 import { PixelEventDebugger } from './components/dashboard/PixelEventDebugger';
@@ -41,14 +43,17 @@ export default function App() {
 function AppContent() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
   const [stats, setStats] = useState(getDashboardStats());
   const [isAuth, setIsAuth] = useState<boolean>(isAuthenticated());
 
   const refreshData = () => {
     const prods = getProducts();
     const ords = getOrders();
+    const strs = getStores();
     setProducts(prods);
     setOrders(ords);
+    setStores(strs);
     setStats(getDashboardStats());
     setIsAuth(isAuthenticated());
   };
@@ -68,6 +73,7 @@ function AppContent() {
 
     window.addEventListener('allio_products_updated', handleUpdate);
     window.addEventListener('allio_orders_updated', handleUpdate);
+    window.addEventListener('allio_stores_updated', handleUpdate);
     window.addEventListener('allio_data_updated', handleUpdate);
     window.addEventListener('allio_auth_changed', handleAuthChange);
     window.addEventListener('storage', handleUpdate);
@@ -75,6 +81,7 @@ function AppContent() {
     return () => {
       window.removeEventListener('allio_products_updated', handleUpdate);
       window.removeEventListener('allio_orders_updated', handleUpdate);
+      window.removeEventListener('allio_stores_updated', handleUpdate);
       window.removeEventListener('allio_data_updated', handleUpdate);
       window.removeEventListener('allio_auth_changed', handleAuthChange);
       window.removeEventListener('storage', handleUpdate);
@@ -88,7 +95,8 @@ function AppContent() {
         path="/" 
         element={
           <StorefrontRoute 
-            products={products} 
+            products={products}
+            stores={stores}
             isAuth={isAuth} 
           />
         } 
@@ -101,6 +109,7 @@ function AppContent() {
           <AdminRoute 
             products={products}
             orders={orders}
+            stores={stores}
             stats={stats}
             isAuth={isAuth}
             onAuthChange={refreshData}
@@ -142,7 +151,15 @@ function AppContent() {
 /**
  * Route Component: Storefront Home
  */
-function StorefrontRoute({ products, isAuth }: { products: Product[]; isAuth: boolean }) {
+function StorefrontRoute({ 
+  products, 
+  stores: _stores, 
+  isAuth 
+}: { 
+  products: Product[]; 
+  stores: Store[]; 
+  isAuth: boolean; 
+}) {
   const navigate = useNavigate();
 
   // If normal customer (unauthenticated), render ONLY clean storefront with no admin banner
@@ -364,6 +381,7 @@ function DynamicLandingPageRoute({
 function AdminRoute({
   products,
   orders,
+  stores,
   stats,
   isAuth,
   onAuthChange,
@@ -371,13 +389,16 @@ function AdminRoute({
 }: {
   products: Product[];
   orders: Order[];
+  stores: Store[];
   stats: ReturnType<typeof getDashboardStats>;
   isAuth: boolean;
   onAuthChange: () => void;
   onDataChange: () => void;
 }) {
   const navigate = useNavigate();
-  const [adminTab, setAdminTab] = useState<'overview' | 'products' | 'orders'>('overview');
+  const [adminTab, setAdminTab] = useState<'overview' | 'stores' | 'products' | 'design' | 'orders'>('overview');
+  const [designTargetStoreId, setDesignTargetStoreId] = useState<string | undefined>(undefined);
+  const [designTargetProductId, setDesignTargetProductId] = useState<string | undefined>(undefined);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isPixelDebuggerOpen, setIsPixelDebuggerOpen] = useState(false);
@@ -430,7 +451,9 @@ function AdminRoute({
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black text-slate-900">
                 {adminTab === 'overview' && 'لوحة التحكم والتحليلات'}
+                {adminTab === 'stores' && 'إدارة المتاجر والنيشات (Stores / Niches)'}
                 {adminTab === 'products' && 'إدارة صفحات الهبوط (Landing Pages)'}
+                {adminTab === 'design' && 'محرر التصميم والمحتوى (Design & Content Editor)'}
                 {adminTab === 'orders' && 'إدارة الطلبات الواردة (Orders)'}
               </h1>
               <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-300">
@@ -438,7 +461,7 @@ function AdminRoute({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              منصة allio لإدارة صفحات الهبوط المتعددة وتتبع الحملات الإعلانية بالمغرب
+              منصة allio لإدارة المتاجر، النيشات، صفحات الهبوط وتخصيص الواجهات في المغرب
             </p>
           </div>
 
@@ -476,21 +499,56 @@ function AdminRoute({
           />
         )}
 
-        {/* Admin Tab 2: Landing Pages Manager */}
+        {/* Admin Tab 2: Stores Manager */}
+        {adminTab === 'stores' && (
+          <StoresManager
+            stores={stores}
+            products={products}
+            onStoresChange={onDataChange}
+            onNavigateToDesign={(storeId: string) => {
+              setDesignTargetStoreId(storeId);
+              setDesignTargetProductId(undefined);
+              setAdminTab('design');
+            }}
+            onNavigateToLandingPages={(_storeId: string) => {
+              setAdminTab('products');
+            }}
+          />
+        )}
+
+        {/* Admin Tab 3: Landing Pages Manager */}
         {adminTab === 'products' && (
           <LandingPagesManager
             products={products}
+            stores={stores}
             onProductsChange={onDataChange}
             onOpenCreateModal={() => {
               setEditingProduct(null);
               setIsCreateModalOpen(true);
             }}
             onEditProduct={handleOpenEdit}
+            onCustomizeDesign={(product) => {
+              setDesignTargetStoreId(product.storeId);
+              setDesignTargetProductId(product.id);
+              setAdminTab('design');
+            }}
             onViewLandingPage={(p) => navigate(`/${p.slug}`)}
           />
         )}
 
-        {/* Admin Tab 3: Orders Manager */}
+        {/* Admin Tab 4: Design & Content Editor */}
+        {adminTab === 'design' && (
+          <DesignEditor
+            stores={stores}
+            products={products}
+            initialStoreId={designTargetStoreId}
+            initialProductId={designTargetProductId}
+            onDataChange={onDataChange}
+            onViewProduct={(product: Product) => navigate(`/${product.slug}`)}
+          />
+        )}
+
+        {/* Admin Tab 5: Orders Manager */}
         {adminTab === 'orders' && (
           <OrdersManager
             orders={orders}
@@ -509,6 +567,7 @@ function AdminRoute({
         }}
         onSave={handleSaveProduct}
         editingProduct={editingProduct}
+        stores={stores}
       />
 
       {/* Pixel Event Inspector Drawer */}

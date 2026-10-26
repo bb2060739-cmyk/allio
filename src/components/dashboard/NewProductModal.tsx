@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Product } from '../../types';
-import { X, Plus, Trash2, Sparkles, Tag, Shield, Globe } from 'lucide-react';
+import { Product, Store } from '../../types';
+import { X, Plus, Trash2, Sparkles, Tag, Shield, Globe, Store as StoreIcon } from 'lucide-react';
 
 interface NewProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (product: Partial<Product> & { name: string; price: number }) => void | Promise<void>;
   editingProduct?: Product | null;
+  stores?: Store[];
 }
 
 export const NewProductModal: React.FC<NewProductModalProps> = ({
   isOpen,
   onClose,
   onSave,
-  editingProduct
+  editingProduct,
+  stores = []
 }) => {
+  const [storeId, setStoreId] = useState<string>('store-default');
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [price, setPrice] = useState<number | ''>(299);
@@ -32,6 +35,7 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
 
   useEffect(() => {
     if (editingProduct) {
+      setStoreId(editingProduct.storeId || stores[0]?.id || 'store-default');
       setName(editingProduct.name);
       setSlug(editingProduct.slug);
       setPrice(editingProduct.price);
@@ -116,6 +120,7 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
 
     await onSave({
       id: editingProduct?.id,
+      storeId,
       name: name.trim(),
       slug: slug.trim() || 'product-' + Date.now(),
       price: Number(price),
@@ -159,12 +164,37 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
 
         {/* Modal Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Section: Product Basic Info */}
+          {/* Section: Store & Basic Info */}
           <div className="space-y-4">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <Tag className="w-4 h-4 text-emerald-600" />
-              <span>1. بيانات المنتج والأسعار (بالدرهم المغربي DH)</span>
+              <span>1. المتجر وبيانات المنتج (بالدرهم المغربي DH)</span>
             </h3>
+
+            {/* Store / Niche selector */}
+            {stores && stores.length > 0 && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  المتجر / النيش التابع له <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <StoreIcon className="w-4 h-4" />
+                  </div>
+                  <select
+                    value={storeId}
+                    onChange={(e) => setStoreId(e.target.value)}
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-emerald-600 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white outline-none cursor-pointer"
+                  >
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.niche})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">

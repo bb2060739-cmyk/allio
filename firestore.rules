@@ -19,6 +19,12 @@ service cloud.firestore {
       allow create, update, delete: if true;
     }
 
+    // Stores Collection: Multi-store & niche configurations
+    match /stores/{storeId} {
+      allow read, write: if true;
+      allow create, update, delete: if true;
+    }
+
     // Ping / health check collection
     match /test/{docId} {
       allow read, write: if true;

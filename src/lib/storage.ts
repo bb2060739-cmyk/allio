@@ -1,4 +1,4 @@
-import { Product, Order, OrderStatus, DashboardStats } from '../types';
+import { Product, Order, OrderStatus, DashboardStats, Store, LandingPageDesignConfig } from '../types';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { 
   collection, 
@@ -15,6 +15,62 @@ import {
 
 const PRODUCTS_KEY = 'allio_products';
 const ORDERS_KEY = 'allio_orders';
+const STORES_KEY = 'allio_stores';
+
+export const DEFAULT_STORE: Store = {
+  id: 'store-default',
+  name: 'متجر Allio الرئيسي',
+  slug: 'main',
+  description: 'المتجر الرئيسي لصفحات الهبوط المتعددة والتجارة الإلكترونية بالمغرب',
+  niche: 'عام وتجارة إلكترونية',
+  currency: 'DH',
+  isDefault: true,
+  design: {
+    primaryColor: '#059669', // Emerald-600
+    secondaryColor: '#0f172a', // Slate-900
+    logoType: 'text',
+    logoText: 'Allio',
+    logoImageUrl: '',
+    announcementText: 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام'
+  },
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
+
+export const getDefaultDesignConfig = (productName?: string, fullDesc?: string): LandingPageDesignConfig => ({
+  hero: {
+    enabled: true,
+    badgeText: 'عرض حصري بالمغرب 🔥 توصيل سريع والدفع عند الاستلام',
+    headline: productName || 'منتج أصلي عالي الجودة متوفر الآن',
+    subheadline: fullDesc || 'تخفيض استثنائي لمدة محدودة مع ضمان الجودة والتوصيل لكافة المدن المغربية.',
+    ctaText: 'اطلب الآن - الدفع عند الاستلام 🚚',
+    heroImageUrl: ''
+  },
+  features: {
+    enabled: true,
+    title: 'أهم المميزات والمواصفات',
+    items: [
+      { id: 'f-1', title: 'جودة أصلية ومضمونة 100%' },
+      { id: 'f-2', title: 'توصيل سريع حتى باب منزلك' },
+      { id: 'f-3', title: 'الدفع نقداً بعد فحص المنتج والتأكد منه' }
+    ]
+  },
+  testimonials: {
+    enabled: true,
+    title: 'آراء وتقييمات زبنائنا في المغرب',
+    items: [
+      { id: 't-1', name: 'أمين البرنوصي', city: 'الدار البيضاء', rating: 5, comment: 'الصراحة جودة ممتازة والتوصيل كان في 24 ساعة. شكراً ليكم!' },
+      { id: 't-2', name: 'سناء بن جلون', city: 'الرباط', rating: 5, comment: 'منتج واعر بزاف مطابق تماماً للوصف. تعامل راقي وموزع مهذب.' },
+      { id: 't-3', name: 'يوسف مراكش', city: 'مراكش', rating: 5, comment: 'وصلني في وقت وجيز وفحصتو عاد خلصت. تبارك الله عليكم.' }
+    ]
+  },
+  guarantee: {
+    enabled: true,
+    title: 'ضمان الرضا والجودة في متجرنا',
+    description: 'نوفر لكم إمكانية المعاينة قبل الدفع، مع ضمان استبدال أو استرجاع مجاني في حالة أي عيب مصنعي.',
+    badgeText: 'ضمان ذهبي 100%'
+  }
+});
 
 export const safeLocalStorage = {
   getItem: (key: string): string | null => {
@@ -48,15 +104,141 @@ export const safeLocalStorage = {
 };
 
 // ============================================================================
+// STORES API - FIRESTORE + OPTIMISTIC LOCAL CACHE (MULTI-STORE / MULTI-NICHE)
+// ============================================================================
+
+export const getStores = (): Store[] => {
+  try {
+    const data = safeLocalStorage.getItem(STORES_KEY);
+    if (data !== null) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+    return [DEFAULT_STORE];
+  } catch {
+    return [DEFAULT_STORE];
+  }
+};
+
+export const getStoreById = (id?: string): Store => {
+  const stores = getStores();
+  if (!id) return stores[0] || DEFAULT_STORE;
+  return stores.find(s => s.id === id) || stores[0] || DEFAULT_STORE;
+};
+
+export const getStoreBySlug = (slug?: string): Store => {
+  const stores = getStores();
+  if (!slug) return stores[0] || DEFAULT_STORE;
+  return stores.find(s => s.slug === slug || s.id === slug) || stores[0] || DEFAULT_STORE;
+};
+
+export const saveStore = async (storeData: Partial<Store> & { name: string }): Promise<Store> => {
+  const stores = getStores();
+  const slug = storeData.slug || storeData.name.toLowerCase().trim()
+    .replace(/[^\w\u0621-\u064A\s-]/g, '')
+    .replace(/\s+/g, '-');
+
+  let targetStore: Store;
+  if (storeData.id && storeData.id.trim()) {
+    const existingId = storeData.id.trim();
+    const index = stores.findIndex(s => s.id === existingId);
+    const existing = index !== -1 ? stores[index] : DEFAULT_STORE;
+    targetStore = {
+      ...existing,
+      ...storeData,
+      id: existingId,
+      slug: slug || existing.slug || 'store-' + Date.now(),
+      name: storeData.name,
+      design: {
+        ...(existing.design || DEFAULT_STORE.design),
+        ...(storeData.design || {})
+      },
+      updatedAt: new Date().toISOString()
+    } as Store;
+
+    if (index !== -1) {
+      stores[index] = targetStore;
+    } else {
+      stores.unshift(targetStore);
+    }
+  } else {
+    const newId = 'store-' + Date.now();
+    targetStore = {
+      id: newId,
+      name: storeData.name,
+      slug: slug || 'store-' + Date.now(),
+      description: storeData.description || '',
+      niche: storeData.niche || 'عام',
+      currency: storeData.currency || 'DH',
+      isDefault: stores.length === 0,
+      design: {
+        ...DEFAULT_STORE.design,
+        ...(storeData.design || {})
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    stores.unshift(targetStore);
+  }
+
+  // 1. Optimistic Local Update
+  safeLocalStorage.setItem(STORES_KEY, JSON.stringify(stores));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('allio_stores_updated', { detail: targetStore }));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'stores', data: targetStore } }));
+  }
+
+  // 2. Permanent Cloud Firestore Sync
+  try {
+    const storeRef = doc(db, 'stores', targetStore.id);
+    await setDoc(storeRef, targetStore);
+    console.log(`[Firebase] Successfully saved store doc: stores/${targetStore.id}`);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `stores/${targetStore.id}`);
+  }
+
+  return targetStore;
+};
+
+export const deleteStore = async (storeId: string): Promise<boolean> => {
+  if (!storeId || storeId === 'store-default') return false;
+  const targetDocId = storeId.trim();
+  const stores = getStores();
+  const filtered = stores.filter(s => s.id !== targetDocId);
+  safeLocalStorage.setItem(STORES_KEY, JSON.stringify(filtered));
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('allio_stores_updated', { detail: filtered }));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'stores', data: filtered } }));
+  }
+
+  let success = false;
+  try {
+    const storeRef = doc(db, 'stores', targetDocId);
+    await deleteDoc(storeRef);
+    success = true;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `stores/${targetDocId}`);
+  }
+
+  return success;
+};
+
+// ============================================================================
 // PRODUCTS API - FIRESTORE + OPTIMISTIC LOCAL CACHE
 // ============================================================================
 
-export const getProducts = (): Product[] => {
+export const getProducts = (storeId?: string): Product[] => {
   try {
     const data = safeLocalStorage.getItem(PRODUCTS_KEY);
     if (data !== null) {
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
+        if (storeId) {
+          return parsed.filter(p => p.storeId === storeId || (!p.storeId && storeId === 'store-default'));
+        }
         return parsed;
       }
     }
@@ -88,6 +270,8 @@ export const saveProduct = async (productData: Partial<Product> & { name: string
       ...existing,
       ...productData,
       id: existingId,
+      storeId: productData.storeId !== undefined ? productData.storeId : (existing.storeId || 'store-default'),
+      designConfig: productData.designConfig !== undefined ? productData.designConfig : (existing.designConfig || getDefaultDesignConfig(productData.name, productData.fullDescription)),
       slug: slug || existing.slug || 'product-' + Date.now(),
       name: productData.name,
       price: Number(productData.price),
@@ -104,6 +288,8 @@ export const saveProduct = async (productData: Partial<Product> & { name: string
     const newId = 'prod-' + Date.now();
     targetProduct = {
       id: newId,
+      storeId: productData.storeId || 'store-default',
+      designConfig: productData.designConfig || getDefaultDesignConfig(productData.name, productData.fullDescription),
       slug: slug || 'product-' + Date.now(),
       name: productData.name,
       price: Number(productData.price),
@@ -467,6 +653,43 @@ export const initFirestoreRealtimeSync = () => {
     });
   } catch (err) {
     console.error('Error starting orders realtime listener', err);
+  }
+
+  // 3. Sync Stores Real-Time Listener (Multi-Store / Multi-Niche)
+  try {
+    const storesCol = collection(db, 'stores');
+    onSnapshot(storesCol, (snapshot) => {
+      if (snapshot.empty) {
+        // Seed initial default store to Firestore
+        const defaultStore = DEFAULT_STORE;
+        setDoc(doc(db, 'stores', defaultStore.id), defaultStore).catch(() => {});
+        safeLocalStorage.setItem(STORES_KEY, JSON.stringify([defaultStore]));
+        window.dispatchEvent(new CustomEvent('allio_stores_updated', { detail: [defaultStore] }));
+        return;
+      }
+
+      const remoteStores: Store[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Store;
+        remoteStores.push({
+          ...data,
+          id: docSnap.id
+        });
+      });
+
+      remoteStores.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      safeLocalStorage.setItem(STORES_KEY, JSON.stringify(remoteStores));
+      window.dispatchEvent(new CustomEvent('allio_stores_updated', { detail: remoteStores }));
+      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'stores', data: remoteStores } }));
+    }, (error) => {
+      if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
+        console.warn('[Firestore Sync] Stores listener operating in offline cache mode:', error.message);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, 'stores');
+      }
+    });
+  } catch (err) {
+    console.error('Error starting stores realtime listener', err);
   }
 };
 

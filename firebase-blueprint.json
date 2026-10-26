@@ -59,6 +59,23 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["orderNumber", "customerName", "phoneNumber", "city", "totalPrice", "status"]
+    },
+    "Store": {
+      "title": "Store",
+      "description": "Store and niche configuration with dynamic branding & theme",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" },
+        "niche": { "type": "string" },
+        "currency": { "type": "string" },
+        "design": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "slug"]
     }
   },
   "firestore": {
@@ -69,6 +86,10 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Customer COD incoming orders collection"
+    },
+    "/stores/{storeId}": {
+      "schema": "Store",
+      "description": "Multi-store and niche configurations collection"
     }
   }
 }

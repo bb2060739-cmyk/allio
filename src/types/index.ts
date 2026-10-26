@@ -1,7 +1,80 @@
 export type OrderStatus = 'new' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
 
+export interface StoreDesign {
+  primaryColor: string; // Hex color e.g. '#059669'
+  secondaryColor: string; // Hex color e.g. '#0f172a'
+  logoType: 'text' | 'image';
+  logoText: string;
+  logoImageUrl?: string;
+  announcementText?: string;
+}
+
+export interface Store {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  niche: string;
+  currency: string;
+  isDefault?: boolean;
+  design: StoreDesign;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HeroSectionConfig {
+  enabled: boolean;
+  badgeText?: string;
+  headline?: string;
+  subheadline?: string;
+  ctaText?: string;
+  heroImageUrl?: string;
+}
+
+export interface FeatureItem {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface FeaturesSectionConfig {
+  enabled: boolean;
+  title?: string;
+  items: FeatureItem[];
+}
+
+export interface TestimonialItem {
+  id: string;
+  name: string;
+  city: string;
+  rating: number;
+  comment: string;
+  avatarUrl?: string;
+}
+
+export interface TestimonialsSectionConfig {
+  enabled: boolean;
+  title?: string;
+  items: TestimonialItem[];
+}
+
+export interface GuaranteeSectionConfig {
+  enabled: boolean;
+  title?: string;
+  description?: string;
+  badgeText?: string;
+}
+
+export interface LandingPageDesignConfig {
+  hero: HeroSectionConfig;
+  features: FeaturesSectionConfig;
+  testimonials: TestimonialsSectionConfig;
+  guarantee: GuaranteeSectionConfig;
+}
+
 export interface Product {
   id: string;
+  storeId?: string; // Belongs to Store
   slug: string;
   name: string;
   price: number; // In Moroccan Dirhams (DH)
@@ -21,6 +94,7 @@ export interface Product {
   updatedAt: string;
   views: number;
   salesCount: number;
+  designConfig?: LandingPageDesignConfig;
 }
 
 export interface Order {

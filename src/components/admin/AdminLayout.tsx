@@ -2,13 +2,14 @@ import React from 'react';
 import { AdminUser, logoutAdmin } from '../../lib/auth';
 import { 
   BarChart3, Layers, ShoppingCart, Activity, 
-  ExternalLink, LogOut, ShieldCheck, UserCheck 
+  ExternalLink, LogOut, ShieldCheck, UserCheck,
+  Store, Palette
 } from 'lucide-react';
 
 interface AdminLayoutProps {
   user: AdminUser;
-  activeTab: 'overview' | 'products' | 'orders';
-  onSelectTab: (tab: 'overview' | 'products' | 'orders') => void;
+  activeTab: 'overview' | 'stores' | 'products' | 'design' | 'orders';
+  onSelectTab: (tab: 'overview' | 'stores' | 'products' | 'design' | 'orders') => void;
   onOpenCreateProduct: () => void;
   onTogglePixelDebugger: () => void;
   onNavigateToPublicStore: () => void;
@@ -52,41 +53,65 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           </div>
 
           {/* Admin Navigation Tabs */}
-          <nav className="flex items-center gap-1 md:gap-2 text-xs">
+          <nav className="flex items-center gap-1 md:gap-1.5 text-xs">
             <button
               onClick={() => onSelectTab('overview')}
-              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'overview'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
               <BarChart3 className="w-4 h-4" />
-              <span className="hidden sm:inline">لوحة التحليلات</span>
+              <span className="hidden md:inline">التحليلات</span>
+            </button>
+
+            <button
+              onClick={() => onSelectTab('stores')}
+              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'stores'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              <span className="hidden md:inline">المتاجر والنيشات</span>
             </button>
 
             <button
               onClick={() => onSelectTab('products')}
-              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'products'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
               <Layers className="w-4 h-4" />
-              <span className="hidden sm:inline">صفحات الهبوط</span>
+              <span className="hidden md:inline">صفحات الهبوط</span>
+            </button>
+
+            <button
+              onClick={() => onSelectTab('design')}
+              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'design'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Palette className="w-4 h-4" />
+              <span className="hidden md:inline">محرر التصميم</span>
             </button>
 
             <button
               onClick={() => onSelectTab('orders')}
-              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'orders'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
               <ShoppingCart className="w-4 h-4" />
-              <span className="hidden sm:inline">إدارة الطلبات</span>
+              <span className="hidden md:inline">إدارة الطلبات</span>
             </button>
           </nav>
 

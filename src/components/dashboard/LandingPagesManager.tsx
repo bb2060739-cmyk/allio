@@ -1,31 +1,41 @@
 import React, { useState } from 'react';
-import { Product } from '../../types';
+import { Product, Store } from '../../types';
 import { deleteProduct } from '../../lib/storage';
 import { 
   Plus, ExternalLink, Edit3, Trash2, Copy, 
-  Check, Loader2, AlertTriangle, ShieldAlert, Database, X
+  Check, Loader2, AlertTriangle, ShieldAlert, Database, X,
+  Store as StoreIcon, Palette, Filter
 } from 'lucide-react';
 
 interface LandingPagesManagerProps {
   products: Product[];
+  stores: Store[];
   onProductsChange: () => void;
   onOpenCreateModal: () => void;
   onEditProduct: (product: Product) => void;
   onViewLandingPage: (product: Product) => void;
+  onCustomizeDesign: (product: Product) => void;
 }
 
 export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
   products,
+  stores,
   onProductsChange,
   onOpenCreateModal,
   onEditProduct,
-  onViewLandingPage
+  onViewLandingPage,
+  onCustomizeDesign
 }) => {
+  const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+
+  const filteredProducts = selectedStoreFilter === 'all' 
+    ? products 
+    : products.filter(p => p.storeId === selectedStoreFilter || (!p.storeId && selectedStoreFilter === 'store-default'));
 
   const handleOpenDeleteConfirm = (product: Product) => {
     setDeleteSuccessMessage(null);
@@ -100,15 +110,15 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
         </div>
       )}
 
-      {/* Top Action Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+      {/* Top Action Header with Store Filter */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-black text-slate-900">
               صفحات الهبوط المباشرة (Landing Pages)
             </h2>
             <span className="text-[11px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-full border border-slate-200">
-              {products.length} {products.length === 1 ? 'صفحة' : 'صفحات'}
+              {filteredProducts.length} {filteredProducts.length === 1 ? 'صفحة' : 'صفحات'}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -116,25 +126,45 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onOpenCreateModal}
-          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>إنشاء صفحة منتج جديدة</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Store / Niche Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs">
+            <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="font-bold text-slate-600">المتجر:</span>
+            <select
+              value={selectedStoreFilter}
+              onChange={(e) => setSelectedStoreFilter(e.target.value)}
+              className="bg-transparent font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+            >
+              <option value="all">جميع المتاجر ({products.length})</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({products.filter(p => p.storeId === s.id || (!p.storeId && s.id === 'store-default')).length})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={onOpenCreateModal}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ إنشاء صفحة منتج جديدة</span>
+          </button>
+        </div>
       </div>
 
       {/* Empty State */}
-      {products.length === 0 && (
+      {filteredProducts.length === 0 && (
         <div className="bg-white rounded-3xl border border-dashed border-slate-300 p-12 text-center space-y-4">
           <div className="w-14 h-14 bg-slate-100 text-slate-400 rounded-2xl mx-auto flex items-center justify-center">
             <Database className="w-7 h-7" />
           </div>
           <div>
-            <h3 className="font-bold text-slate-800 text-base">لا توجد صفحات هبوط نشطة حالياً</h3>
+            <h3 className="font-bold text-slate-800 text-base">لا توجد صفحات هبوط في هذا المتجر</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-              تم حذف جميع المنتجات أو لم يتم إنشاء أي صفحة هبوط بعد. يمكنك إضافة صفحة منتج جديدة لحملتك الإعلانية القادمة في أي وقت.
+              لم يتم إنشاء أي صفحة هبوط تابعة لهذا المتجر بعد. يمكنك إضافة صفحة منتج جديدة أو اختيار متجر آخر من القائمة.
             </p>
           </div>
           <button
@@ -149,7 +179,8 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
 
       {/* Products Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {products.map((product) => {
+        {filteredProducts.map((product) => {
+          const linkedStore = stores.find(s => s.id === product.storeId) || stores[0];
           return (
             <div
               key={product.id}
@@ -164,12 +195,16 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                     referrerPolicy="no-referrer"
                     className="w-full h-auto max-h-[180px] object-contain group-hover:scale-105 transition-transform duration-300"
                   />
-                  {product.badge && (
-                    <span className="absolute top-2.5 right-2.5 bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
-                      {product.badge}
-                    </span>
-                  )}
-                  <span className="absolute bottom-2.5 left-2.5 bg-emerald-600 text-white text-xs font-bold px-2 py-0.5 rounded-md shadow-xs">
+                  {/* Store Badge */}
+                  <span 
+                    className="absolute top-2.5 right-2.5 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs flex items-center gap-1"
+                    style={{ backgroundColor: linkedStore?.design?.primaryColor || '#059669' }}
+                  >
+                    <StoreIcon className="w-3 h-3" />
+                    <span>{linkedStore?.name || 'Allio'}</span>
+                  </span>
+
+                  <span className="absolute bottom-2.5 left-2.5 bg-slate-900/90 text-white text-xs font-bold px-2 py-0.5 rounded-md shadow-xs">
                     {product.price} درهم DH
                   </span>
                 </div>
@@ -274,8 +309,16 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                 </button>
 
                 <button
+                  onClick={() => onCustomizeDesign(product)}
+                  title="تخصيص التصميم والأقسام والمحتوى"
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50 transition-colors cursor-pointer"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                </button>
+
+                <button
                   onClick={() => onEditProduct(product)}
-                  title="تعديل صفحة المنتج"
+                  title="تعديل بيانات المنتج"
                   className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-blue-200 transition-colors cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
