@@ -150,10 +150,6 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
       {/* Products Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {products.map((product) => {
-          const convRate = product.views > 0
-            ? ((product.salesCount / product.views) * 100).toFixed(1)
-            : '0.0';
-
           return (
             <div
               key={product.id}
@@ -161,12 +157,12 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
             >
               <div>
                 {/* Image Cover */}
-                <div className="relative aspect-16/9 bg-slate-100 overflow-hidden">
+                <div className="relative bg-slate-50 border-b border-slate-100 overflow-hidden p-3 min-h-[190px] flex items-center justify-center">
                   <img
                     src={product.images[0] || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'}
                     alt={product.name}
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className="w-full h-auto max-h-[180px] object-contain group-hover:scale-105 transition-transform duration-300"
                   />
                   {product.badge && (
                     <span className="absolute top-2.5 right-2.5 bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
@@ -252,16 +248,16 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                   {/* Metrics */}
                   <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center text-xs">
                     <div>
-                      <span className="text-[10px] text-slate-400 block">الزيارات</span>
-                      <span className="font-bold text-slate-800">{product.views}</span>
+                      <span className="text-[10px] text-slate-400 block">السعر</span>
+                      <span className="font-bold text-slate-800">{product.price} DH</span>
                     </div>
                     <div>
                       <span className="text-[10px] text-slate-400 block">المبيعات</span>
-                      <span className="font-bold text-emerald-700">{product.salesCount}</span>
+                      <span className="font-bold text-emerald-700">{product.salesCount || 0}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 block">معدل التحويل</span>
-                      <span className="font-bold text-slate-800">{convRate}%</span>
+                      <span className="text-[10px] text-slate-400 block">المخزون</span>
+                      <span className="font-bold text-slate-800">{product.stockCount || 0}</span>
                     </div>
                   </div>
                 </div>

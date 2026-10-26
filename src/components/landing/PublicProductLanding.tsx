@@ -115,13 +115,13 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
           {/* Left Column: Gallery / Visuals (Lg: 7 cols) */}
           <div className="lg:col-span-7 space-y-3">
             {/* Primary Main Image Container */}
-            <div className="relative aspect-4/3 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 shadow-sm flex items-center justify-center">
+            <div className="relative bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center p-3 sm:p-5 min-h-[320px] sm:min-h-[420px]">
               {product.images && product.images.length > 0 ? (
                 <img
                   src={product.images[selectedImageIndex] || product.images[0]}
                   alt={product.name}
                   referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover transition-all duration-300"
+                  className="w-full h-auto max-h-[550px] object-contain rounded-xl transition-all duration-300 mx-auto"
                   onError={(e) => {
                     // Fallback to stylized SVG placeholder if image fails
                     const target = e.currentTarget;
@@ -164,7 +164,7 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
                     key={idx}
                     type="button"
                     onClick={() => setSelectedImageIndex(idx)}
-                    className={`relative w-20 h-20 rounded-xl overflow-hidden border-2 shrink-0 transition-all ${
+                    className={`relative w-20 h-20 rounded-xl overflow-hidden border-2 shrink-0 transition-all bg-white p-1 flex items-center justify-center ${
                       selectedImageIndex === idx
                         ? 'border-emerald-600 ring-2 ring-emerald-500/20 shadow-sm'
                         : 'border-slate-200 opacity-70 hover:opacity-100'
@@ -174,7 +174,7 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
                       src={img}
                       alt={`${product.name} ${idx + 1}`}
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                     />
                   </button>
                 ))}

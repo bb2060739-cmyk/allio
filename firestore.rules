@@ -3,7 +3,13 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Products Collection: Public read for customers; full write/delete permissions
     match /products/{productId} {
-      allow read: if true;
+      allow read, write: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Orders Collection: Public create for COD customers; full admin read, update, delete
+    match /orders/{orderId} {
+      allow read, write: if true;
       allow create, update, delete: if true;
     }
 
@@ -13,14 +19,9 @@ service cloud.firestore {
       allow create, update, delete: if true;
     }
 
-    // Orders Collection: Public create for COD customers; read, update and delete
-    match /orders/{orderId} {
-      allow read: if true;
-      allow create: if request.resource.data.customerName is string 
-                    && request.resource.data.phoneNumber is string
-                    && request.resource.data.city is string
-                    && request.resource.data.totalPrice is number;
-      allow update, delete: if true;
+    // Ping / health check collection
+    match /test/{docId} {
+      allow read, write: if true;
     }
   }
 }

@@ -1,5 +1,4 @@
 import { Product, Order, OrderStatus, DashboardStats } from '../types';
-import { INITIAL_PRODUCTS, INITIAL_ORDERS } from '../data/seedData';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { 
   collection, 
@@ -58,12 +57,10 @@ export const getProducts = (): Product[] => {
     if (data !== null) {
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        // Return cached array even if empty (do NOT overwrite deleted products with INITIAL_PRODUCTS)
         return parsed;
       }
     }
-    const isSeeded = safeLocalStorage.getItem('allio_products_seeded') === 'true';
-    return isSeeded ? [] : INITIAL_PRODUCTS;
+    return [];
   } catch {
     return [];
   }
@@ -215,22 +212,25 @@ export const deleteProduct = async (id: string): Promise<boolean> => {
 export const getOrders = (): Order[] => {
   try {
     const data = safeLocalStorage.getItem(ORDERS_KEY);
-    if (!data) {
-      return INITIAL_ORDERS;
+    if (data !== null) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
     }
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_ORDERS;
+    return [];
   } catch {
-    return INITIAL_ORDERS;
+    return [];
   }
 };
 
-export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>): Promise<Order> => {
+export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'> & { id?: string; orderNumber?: string }): Promise<Order> => {
   const orders = getOrders();
-  const newOrderNumber = 'AL-' + (1050 + orders.length);
+  const newId = orderData.id?.trim() || ('ord-' + Date.now());
+  const newOrderNumber = orderData.orderNumber?.trim() || ('AL-' + (1050 + orders.length));
   const newOrder: Order = {
     ...orderData,
-    id: 'ord-' + Date.now(),
+    id: newId,
     orderNumber: newOrderNumber,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -240,7 +240,7 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
   orders.unshift(newOrder);
   safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
 
-  // Update product salesCount and views
+  // Update product salesCount and stockCount
   const products = getProducts();
   const prodIndex = products.findIndex(p => p.id === orderData.productId);
   if (prodIndex !== -1) {
@@ -266,11 +266,13 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
     window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: newOrder } }));
   }
 
-  // 2. Permanent Cloud Firestore Sync
+  // 2. Permanent Cloud Firestore Sync via setDoc directly to Firebase
   try {
     const orderRef = doc(db, 'orders', newOrder.id);
     await setDoc(orderRef, newOrder);
+    console.log(`[Firebase] Successfully created order doc: orders/${newOrder.id}`);
   } catch (error) {
+    console.error(`[Firebase] Error creating order doc: orders/${newOrder.id}:`, error);
     handleFirestoreError(error, OperationType.CREATE, `orders/${newOrder.id}`);
   }
 
@@ -278,10 +280,13 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
 };
 
 export const updateOrderStatus = async (orderId: string, status: OrderStatus): Promise<boolean> => {
+  if (!orderId) return false;
+  const targetDocId = orderId.trim();
   const orders = getOrders();
-  const index = orders.findIndex(o => o.id === orderId);
+  const index = orders.findIndex(o => o.id === targetDocId || o.orderNumber === targetDocId);
+  const updatedAt = new Date().toISOString();
+
   if (index !== -1) {
-    const updatedAt = new Date().toISOString();
     orders[index].status = status;
     orders[index].updatedAt = updatedAt;
     safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
@@ -290,37 +295,88 @@ export const updateOrderStatus = async (orderId: string, status: OrderStatus): P
       window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: orders[index] }));
       window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: orders[index] } }));
     }
-
-    try {
-      const orderRef = doc(db, 'orders', orderId);
-      await updateDoc(orderRef, { status, updatedAt });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
-    }
-
-    return true;
   }
-  return false;
+
+  // Permanent Cloud Firestore Update
+  let success = false;
+  try {
+    const orderRef = doc(db, 'orders', targetDocId);
+    await updateDoc(orderRef, { status, updatedAt });
+    console.log(`[Firebase Update Order] Successfully updated status on orders/${targetDocId}`);
+    success = true;
+  } catch (error) {
+    console.warn(`[Firebase Update Order] Direct updateDoc failed on ${targetDocId}, trying query fallback:`, error);
+    try {
+      const qField = query(collection(db, 'orders'), where('id', '==', targetDocId));
+      const snapField = await getDocs(qField);
+      for (const d of snapField.docs) {
+        await updateDoc(doc(db, 'orders', d.id), { status, updatedAt });
+        success = true;
+      }
+    } catch (secErr) {
+      handleFirestoreError(error, OperationType.UPDATE, `orders/${targetDocId}`);
+      return false;
+    }
+  }
+
+  return success;
 };
 
 export const deleteOrder = async (orderId: string): Promise<boolean> => {
+  if (!orderId || typeof orderId !== 'string') {
+    console.error('[Firebase Delete Order] Invalid order ID provided:', orderId);
+    return false;
+  }
+
+  const targetDocId = orderId.trim();
+  console.log(`[Firebase Delete Order] Initiating permanent deleteDoc for order ID: "${targetDocId}"`);
+
+  // 1. Optimistic Local Cache Update
   const orders = getOrders();
-  const filtered = orders.filter(o => o.id !== orderId);
+  const filtered = orders.filter(o => o.id !== targetDocId && o.orderNumber !== targetDocId);
   safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(filtered));
 
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('allio_orders_updated'));
-    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders' } }));
+    window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: filtered }));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: filtered } }));
   }
 
+  // 2. Permanent Cloud Firestore Deletion via deleteDoc
+  let success = false;
   try {
-    const orderRef = doc(db, 'orders', orderId);
+    const orderRef = doc(db, 'orders', targetDocId);
     await deleteDoc(orderRef);
+    console.log(`[Firebase Delete Order] Successfully executed deleteDoc on orders/${targetDocId}`);
+    success = true;
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `orders/${orderId}`);
+    console.error(`[Firebase Delete Order] Error executing deleteDoc on orders/${targetDocId}:`, error);
+    handleFirestoreError(error, OperationType.DELETE, `orders/${targetDocId}`);
   }
 
-  return true;
+  // 3. Fallback cleanup: Check if any document has field id == targetDocId or orderNumber == targetDocId
+  try {
+    const qField = query(collection(db, 'orders'), where('id', '==', targetDocId));
+    const snapField = await getDocs(qField);
+    for (const d of snapField.docs) {
+      if (d.id !== targetDocId) {
+        console.log(`[Firebase Delete Order] Also deleting matching id field doc: orders/${d.id}`);
+        await deleteDoc(doc(db, 'orders', d.id));
+      }
+    }
+
+    const qNum = query(collection(db, 'orders'), where('orderNumber', '==', targetDocId));
+    const snapNum = await getDocs(qNum);
+    for (const d of snapNum.docs) {
+      if (d.id !== targetDocId) {
+        console.log(`[Firebase Delete Order] Also deleting matching orderNumber doc: orders/${d.id}`);
+        await deleteDoc(doc(db, 'orders', d.id));
+      }
+    }
+  } catch (cleanupErr) {
+    console.warn('[Firebase Delete Order] Secondary cleanup warning:', cleanupErr);
+  }
+
+  return success;
 };
 
 // ============================================================================
@@ -336,55 +392,16 @@ export const initFirestoreRealtimeSync = () => {
   // 1. Sync Products Real-Time Listener
   try {
     const productsCol = collection(db, 'products');
-    onSnapshot(productsCol, async (snapshot) => {
-      const hasSeededLocal = safeLocalStorage.getItem('allio_products_seeded') === 'true';
+    onSnapshot(productsCol, (snapshot) => {
+      safeLocalStorage.setItem('allio_products_seeded', 'true');
 
       if (snapshot.empty) {
-        if (!hasSeededLocal) {
-          // Check if Firestore was already initialized on another client
-          try {
-            const systemDocRef = doc(db, '_system', 'store_config');
-            const systemDocSnap = await getDoc(systemDocRef);
-            if (systemDocSnap.exists()) {
-              // Store was already initialized; 0 products is intentional (admin deleted all)
-              safeLocalStorage.setItem('allio_products_seeded', 'true');
-              safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
-              window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: [] }));
-              window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: [] } }));
-              return;
-            }
-          } catch {
-            // continue to initial seeding
-          }
-
-          // Initial First Boot Seeding ONLY
-          console.log('Seeding initial products to Firestore...');
-          safeLocalStorage.setItem('allio_products_seeded', 'true');
-          try {
-            await setDoc(doc(db, '_system', 'store_config'), { seededAt: new Date().toISOString(), initialized: true });
-          } catch {
-            // ignore
-          }
-
-          for (const prod of INITIAL_PRODUCTS) {
-            try {
-              await setDoc(doc(db, 'products', prod.id), prod);
-            } catch (e) {
-              console.warn('Seeding product error:', e);
-            }
-          }
-          return;
-        } else {
-          // Already seeded previously: 0 products is legitimate (admin deleted all)
-          safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
-          window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: [] }));
-          window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: [] } }));
-          return;
-        }
+        // If Firestore is empty (e.g. user deleted all products), KEEP IT EMPTY. Never auto-reseed dummy products!
+        safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
+        window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: [] }));
+        window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: [] } }));
+        return;
       }
-
-      // Mark store as initialized so empty states in future never trigger re-seed
-      safeLocalStorage.setItem('allio_products_seeded', 'true');
 
       const remoteProducts: Product[] = [];
       snapshot.forEach((docSnap) => {
@@ -402,7 +419,11 @@ export const initFirestoreRealtimeSync = () => {
       window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: remoteProducts }));
       window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: remoteProducts } }));
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'products');
+      if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
+        console.warn('[Firestore Sync] Products listener operating in offline cache mode:', error.message);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, 'products');
+      }
     });
   } catch (err) {
     console.error('Error starting products realtime listener', err);
@@ -411,44 +432,38 @@ export const initFirestoreRealtimeSync = () => {
   // 2. Sync Orders Real-Time Listener
   try {
     const ordersCol = collection(db, 'orders');
-    onSnapshot(ordersCol, async (snapshot) => {
-      const hasSeededOrders = safeLocalStorage.getItem('allio_orders_seeded') === 'true';
+    onSnapshot(ordersCol, (snapshot) => {
+      safeLocalStorage.setItem('allio_orders_seeded', 'true');
 
       if (snapshot.empty) {
-        if (!hasSeededOrders) {
-          console.log('Seeding initial orders to Firestore...');
-          safeLocalStorage.setItem('allio_orders_seeded', 'true');
-          for (const ord of INITIAL_ORDERS) {
-            try {
-              await setDoc(doc(db, 'orders', ord.id), ord);
-            } catch (e) {
-              console.warn('Seeding order error:', e);
-            }
-          }
-          return;
-        } else {
-          safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify([]));
-          window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: [] }));
-          window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: [] } }));
-          return;
-        }
+        // If Firestore is empty (e.g. user deleted all orders), KEEP IT EMPTY. Never auto-reseed dummy orders!
+        safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify([]));
+        window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: [] }));
+        window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: [] } }));
+        return;
       }
 
-      localStorage.setItem('allio_orders_seeded', 'true');
       const remoteOrders: Order[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Order;
+        // CRITICAL: Bind id directly to docSnap.id to ensure true Firebase document ID is used
         remoteOrders.push({
           ...data,
           id: docSnap.id
         });
       });
+
+      // Sort by creation date
       remoteOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(remoteOrders));
+      safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(remoteOrders));
       window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: remoteOrders }));
       window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: remoteOrders } }));
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'orders');
+      if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
+        console.warn('[Firestore Sync] Orders listener operating in offline cache mode:', error.message);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, 'orders');
+      }
     });
   } catch (err) {
     console.error('Error starting orders realtime listener', err);
@@ -466,9 +481,9 @@ export const getDashboardStats = (): DashboardStats => {
   const totalRevenue = validOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
   const averageOrderValue = validOrders.length > 0 ? Math.round(totalRevenue / validOrders.length) : 0;
   
-  const products = getProducts();
-  const totalViews = products.reduce((sum, p) => sum + (p.views || 0), 0) || 1;
-  const conversionRate = Number(((totalOrders / Math.max(totalViews, 100)) * 100).toFixed(1));
+  // Calculated purely from orders: percentage of orders that are confirmed, shipped, or delivered
+  const successfulCount = confirmedOrders + shippedOrders;
+  const conversionRate = totalOrders > 0 ? Math.round((successfulCount / totalOrders) * 100) : 0;
 
   return {
     totalOrders,

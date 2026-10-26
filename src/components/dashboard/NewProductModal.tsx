@@ -337,8 +337,8 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
             {images.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {images.map((img, i) => (
-                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 group">
-                    <img src={img} alt="preview" className="w-full h-full object-cover" />
+                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center p-1 group">
+                    <img src={img} alt="preview" className="w-full h-full object-contain" />
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(i)}

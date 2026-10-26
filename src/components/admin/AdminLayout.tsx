@@ -62,7 +62,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               }`}
             >
               <BarChart3 className="w-4 h-4" />
-              <span className="hidden sm:inline">الإحصائيات</span>
+              <span className="hidden sm:inline">لوحة التحليلات</span>
             </button>
 
             <button

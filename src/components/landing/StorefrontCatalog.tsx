@@ -102,12 +102,12 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = ({
                 className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div>
-                  <div className="relative aspect-4/3 bg-slate-100 overflow-hidden">
+                  <div className="relative bg-slate-50 border-b border-slate-100 overflow-hidden p-4 flex items-center justify-center min-h-[220px] sm:min-h-[250px]">
                     <img
                       src={product.images[0]}
                       alt={product.name}
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-auto max-h-[230px] object-contain group-hover:scale-105 transition-transform duration-300"
                     />
                     {product.badge && (
                       <span className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-md text-white text-[11px] font-bold px-2.5 py-1 rounded-lg">

@@ -24,6 +24,7 @@ import {
   Smartphone, Monitor, ExternalLink, ArrowRight, 
   Copy, Check, LogOut 
 } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 /**
  * Main Application Shell with Global State & Synchronization
@@ -32,6 +33,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AppContent />
+      <Analytics />
     </BrowserRouter>
   );
 }
@@ -492,6 +494,7 @@ function AdminRoute({
         {adminTab === 'orders' && (
           <OrdersManager
             orders={orders}
+            products={products}
             onOrdersChange={onDataChange}
           />
         )}

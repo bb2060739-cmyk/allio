@@ -1,12 +1,25 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, Firestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// CRITICAL: Must pass firestoreDatabaseId as required by AI Studio Firestore Enterprise configuration
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// CRITICAL: Initialize Firestore with experimentalForceLongPolling: true.
+// In browser iframe sandbox / restricted proxy environments, default WebChannel streaming
+// can be delayed by proxies and cause "Could not reach Cloud Firestore backend. Backend didn't respond within 10 seconds".
+// Long-polling ensures immediate, reliable HTTP connection without 10s streaming hangs.
+function getOrCreateFirestore(): Firestore {
+  try {
+    return initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    }, firebaseConfig.firestoreDatabaseId);
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+}
+
+export const db = getOrCreateFirestore();
 export const auth = getAuth(app);
 
 export enum OperationType {
@@ -29,30 +42,7 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid || null,
-      email: auth.currentUser?.email || null,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error:', JSON.stringify(errInfo));
-  return new Error(JSON.stringify(errInfo));
-}
-
-// Test connectivity on initial load
-export async function testFirestoreConnection(): Promise<boolean> {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase is offline. Check connection or project setup.');
-      return false;
-    }
-    // Permissions or non-existent doc errors are fine since 'test/connection' may not exist
-    return true;
-  }
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[Firebase ${operationType.toUpperCase()}] Notice on ${path || 'database'}:`, message);
+  return new Error(message);
 }
