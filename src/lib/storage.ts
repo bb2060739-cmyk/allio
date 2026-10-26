@@ -4,15 +4,49 @@ import { db, handleFirestoreError, OperationType } from './firebase';
 import { 
   collection, 
   doc, 
+  getDoc,
   getDocs, 
   setDoc, 
   deleteDoc, 
   updateDoc, 
-  onSnapshot 
+  onSnapshot,
+  query,
+  where
 } from 'firebase/firestore';
 
 const PRODUCTS_KEY = 'allio_products';
 const ORDERS_KEY = 'allio_orders';
+
+export const safeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        return localStorage.getItem(key);
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(key, value);
+      }
+    } catch {
+      // ignore
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.removeItem(key);
+      }
+    } catch {
+      // ignore
+    }
+  }
+};
 
 // ============================================================================
 // PRODUCTS API - FIRESTORE + OPTIMISTIC LOCAL CACHE
@@ -20,14 +54,18 @@ const ORDERS_KEY = 'allio_orders';
 
 export const getProducts = (): Product[] => {
   try {
-    const data = localStorage.getItem(PRODUCTS_KEY);
-    if (!data) {
-      return INITIAL_PRODUCTS;
+    const data = safeLocalStorage.getItem(PRODUCTS_KEY);
+    if (data !== null) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        // Return cached array even if empty (do NOT overwrite deleted products with INITIAL_PRODUCTS)
+        return parsed;
+      }
     }
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_PRODUCTS;
+    const isSeeded = safeLocalStorage.getItem('allio_products_seeded') === 'true';
+    return isSeeded ? [] : INITIAL_PRODUCTS;
   } catch {
-    return INITIAL_PRODUCTS;
+    return [];
   }
 };
 
@@ -44,14 +82,15 @@ export const saveProduct = async (productData: Partial<Product> & { name: string
 
   let targetProduct: Product;
 
-  if (productData.id) {
+  if (productData.id && productData.id.trim()) {
     // Update existing product
-    const index = products.findIndex(p => p.id === productData.id);
+    const existingId = productData.id.trim();
+    const index = products.findIndex(p => p.id === existingId);
     const existing = index !== -1 ? products[index] : ({} as Product);
     targetProduct = {
       ...existing,
       ...productData,
-      id: productData.id,
+      id: existingId,
       slug: slug || existing.slug || 'product-' + Date.now(),
       name: productData.name,
       price: Number(productData.price),
@@ -64,7 +103,7 @@ export const saveProduct = async (productData: Partial<Product> & { name: string
       products.unshift(targetProduct);
     }
   } else {
-    // Create new product
+    // Create new product with a guaranteed unique document ID
     const newId = 'prod-' + Date.now();
     targetProduct = {
       id: newId,
@@ -94,7 +133,7 @@ export const saveProduct = async (productData: Partial<Product> & { name: string
   }
 
   // 1. Optimistic Local Update
-  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+  safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: targetProduct }));
     window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: targetProduct } }));
@@ -104,6 +143,7 @@ export const saveProduct = async (productData: Partial<Product> & { name: string
   try {
     const productRef = doc(db, 'products', targetProduct.id);
     await setDoc(productRef, targetProduct);
+    console.log(`[Firebase] Successfully saved product doc: products/${targetProduct.id}`);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `products/${targetProduct.id}`);
   }
@@ -112,23 +152,60 @@ export const saveProduct = async (productData: Partial<Product> & { name: string
 };
 
 export const deleteProduct = async (id: string): Promise<boolean> => {
+  if (!id || typeof id !== 'string') {
+    console.error('[Firebase Delete] Invalid product ID provided to deleteProduct:', id);
+    return false;
+  }
+
+  const targetDocId = id.trim();
+  console.log(`[Firebase Delete] Initiating deleteDoc for product with ID: "${targetDocId}"`);
+
+  // 1. Optimistic Local Cache Update
   const products = getProducts();
-  const filtered = products.filter(p => p.id !== id);
-  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(filtered));
+  const filtered = products.filter(p => p.id !== targetDocId && p.slug !== targetDocId);
+  safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(filtered));
 
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('allio_products_updated'));
-    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products' } }));
+    window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: filtered }));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: filtered } }));
   }
 
+  // 2. Permanent Cloud Firestore Deletion via deleteDoc
+  let success = false;
   try {
-    const productRef = doc(db, 'products', id);
+    const productRef = doc(db, 'products', targetDocId);
     await deleteDoc(productRef);
+    console.log(`[Firebase Delete] Successfully executed deleteDoc on products/${targetDocId}`);
+    success = true;
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `products/${id}`);
+    console.error(`[Firebase Delete] Error executing deleteDoc on products/${targetDocId}:`, error);
+    handleFirestoreError(error, OperationType.DELETE, `products/${targetDocId}`);
   }
 
-  return true;
+  // 3. Fallback verification: Check if any document has field id == targetDocId or slug == targetDocId
+  try {
+    const qField = query(collection(db, 'products'), where('id', '==', targetDocId));
+    const snapField = await getDocs(qField);
+    for (const d of snapField.docs) {
+      if (d.id !== targetDocId) {
+        console.log(`[Firebase Delete] Also deleting matching id field doc: products/${d.id}`);
+        await deleteDoc(doc(db, 'products', d.id));
+      }
+    }
+
+    const qSlug = query(collection(db, 'products'), where('slug', '==', targetDocId));
+    const snapSlug = await getDocs(qSlug);
+    for (const d of snapSlug.docs) {
+      if (d.id !== targetDocId) {
+        console.log(`[Firebase Delete] Also deleting matching slug doc: products/${d.id}`);
+        await deleteDoc(doc(db, 'products', d.id));
+      }
+    }
+  } catch (secondaryErr) {
+    console.warn('[Firebase Delete] Secondary cleanup check warning:', secondaryErr);
+  }
+
+  return success;
 };
 
 // ============================================================================
@@ -137,7 +214,7 @@ export const deleteProduct = async (id: string): Promise<boolean> => {
 
 export const getOrders = (): Order[] => {
   try {
-    const data = localStorage.getItem(ORDERS_KEY);
+    const data = safeLocalStorage.getItem(ORDERS_KEY);
     if (!data) {
       return INITIAL_ORDERS;
     }
@@ -161,7 +238,7 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
 
   // 1. Optimistic Local Update
   orders.unshift(newOrder);
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+  safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
 
   // Update product salesCount and views
   const products = getProducts();
@@ -171,7 +248,7 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
     if (products[prodIndex].stockCount > 0) {
       products[prodIndex].stockCount = Math.max(0, products[prodIndex].stockCount - (orderData.quantity || 1));
     }
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+    safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
     try {
       const prodRef = doc(db, 'products', products[prodIndex].id);
       updateDoc(prodRef, {
@@ -207,7 +284,7 @@ export const updateOrderStatus = async (orderId: string, status: OrderStatus): P
     const updatedAt = new Date().toISOString();
     orders[index].status = status;
     orders[index].updatedAt = updatedAt;
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: orders[index] }));
@@ -229,7 +306,7 @@ export const updateOrderStatus = async (orderId: string, status: OrderStatus): P
 export const deleteOrder = async (orderId: string): Promise<boolean> => {
   const orders = getOrders();
   const filtered = orders.filter(o => o.id !== orderId);
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(filtered));
+  safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(filtered));
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('allio_orders_updated'));
@@ -260,27 +337,70 @@ export const initFirestoreRealtimeSync = () => {
   try {
     const productsCol = collection(db, 'products');
     onSnapshot(productsCol, async (snapshot) => {
+      const hasSeededLocal = safeLocalStorage.getItem('allio_products_seeded') === 'true';
+
       if (snapshot.empty) {
-        // First boot: Seed Firestore with default Moroccan products
-        console.log('Seeding initial products to Firestore...');
-        for (const prod of INITIAL_PRODUCTS) {
+        if (!hasSeededLocal) {
+          // Check if Firestore was already initialized on another client
           try {
-            await setDoc(doc(db, 'products', prod.id), prod);
-          } catch (e) {
-            console.warn('Seeding product error:', e);
+            const systemDocRef = doc(db, '_system', 'store_config');
+            const systemDocSnap = await getDoc(systemDocRef);
+            if (systemDocSnap.exists()) {
+              // Store was already initialized; 0 products is intentional (admin deleted all)
+              safeLocalStorage.setItem('allio_products_seeded', 'true');
+              safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
+              window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: [] }));
+              window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: [] } }));
+              return;
+            }
+          } catch {
+            // continue to initial seeding
           }
+
+          // Initial First Boot Seeding ONLY
+          console.log('Seeding initial products to Firestore...');
+          safeLocalStorage.setItem('allio_products_seeded', 'true');
+          try {
+            await setDoc(doc(db, '_system', 'store_config'), { seededAt: new Date().toISOString(), initialized: true });
+          } catch {
+            // ignore
+          }
+
+          for (const prod of INITIAL_PRODUCTS) {
+            try {
+              await setDoc(doc(db, 'products', prod.id), prod);
+            } catch (e) {
+              console.warn('Seeding product error:', e);
+            }
+          }
+          return;
+        } else {
+          // Already seeded previously: 0 products is legitimate (admin deleted all)
+          safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
+          window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: [] }));
+          window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: [] } }));
+          return;
         }
-      } else {
-        const remoteProducts: Product[] = [];
-        snapshot.forEach((docSnap) => {
-          remoteProducts.push(docSnap.data() as Product);
-        });
-        // Sort by creation date
-        remoteProducts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        localStorage.setItem(PRODUCTS_KEY, JSON.stringify(remoteProducts));
-        window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: remoteProducts }));
-        window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: remoteProducts } }));
       }
+
+      // Mark store as initialized so empty states in future never trigger re-seed
+      safeLocalStorage.setItem('allio_products_seeded', 'true');
+
+      const remoteProducts: Product[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Product;
+        // CRITICAL: Bind id directly to docSnap.id to ensure the true Firebase document ID is used
+        remoteProducts.push({
+          ...data,
+          id: docSnap.id
+        });
+      });
+
+      // Sort by creation date
+      remoteProducts.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(remoteProducts));
+      window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: remoteProducts }));
+      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: remoteProducts } }));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'products');
     });
@@ -292,26 +412,41 @@ export const initFirestoreRealtimeSync = () => {
   try {
     const ordersCol = collection(db, 'orders');
     onSnapshot(ordersCol, async (snapshot) => {
+      const hasSeededOrders = safeLocalStorage.getItem('allio_orders_seeded') === 'true';
+
       if (snapshot.empty) {
-        // First boot: Seed Firestore with initial orders
-        console.log('Seeding initial orders to Firestore...');
-        for (const ord of INITIAL_ORDERS) {
-          try {
-            await setDoc(doc(db, 'orders', ord.id), ord);
-          } catch (e) {
-            console.warn('Seeding order error:', e);
+        if (!hasSeededOrders) {
+          console.log('Seeding initial orders to Firestore...');
+          safeLocalStorage.setItem('allio_orders_seeded', 'true');
+          for (const ord of INITIAL_ORDERS) {
+            try {
+              await setDoc(doc(db, 'orders', ord.id), ord);
+            } catch (e) {
+              console.warn('Seeding order error:', e);
+            }
           }
+          return;
+        } else {
+          safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify([]));
+          window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: [] }));
+          window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: [] } }));
+          return;
         }
-      } else {
-        const remoteOrders: Order[] = [];
-        snapshot.forEach((docSnap) => {
-          remoteOrders.push(docSnap.data() as Order);
-        });
-        remoteOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        localStorage.setItem(ORDERS_KEY, JSON.stringify(remoteOrders));
-        window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: remoteOrders }));
-        window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: remoteOrders } }));
       }
+
+      localStorage.setItem('allio_orders_seeded', 'true');
+      const remoteOrders: Order[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Order;
+        remoteOrders.push({
+          ...data,
+          id: docSnap.id
+        });
+      });
+      remoteOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(remoteOrders));
+      window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: remoteOrders }));
+      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: remoteOrders } }));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'orders');
     });
