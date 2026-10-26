@@ -22,6 +22,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [hasStartedForm, setHasStartedForm] = useState(false);
 
   // Field errors & touched state
@@ -207,25 +208,39 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
       return;
     }
 
+    // Anti-Spam Rate Limiter: Prevent automated multiple orders within 15 seconds
+    const lastOrderTime = sessionStorage.getItem('allio_last_order_ts');
+    if (lastOrderTime) {
+      const diffSecs = (Date.now() - Number(lastOrderTime)) / 1000;
+      if (diffSecs < 15) {
+        setSubmissionError(`تم تسجيل طلبكم بنجاح! يرجى الانتظار ${Math.ceil(15 - diffSecs)} ثانية قبل إرسال طلب جديد لتفادي التكرار وسوء الاستخدام.`);
+        return;
+      }
+    }
+
+    setSubmissionError(null);
     setIsSubmitting(true);
 
     try {
       const newOrder = await createOrder({
         productId: product.id,
         productName: product.name,
-        customerName: customerName.trim(),
+        customerName: customerName.trim().slice(0, 100),
         phoneNumber: cleanPhone,
         city: city,
-        address: address.trim(),
-        quantity: quantity,
+        address: address.trim().slice(0, 300),
+        quantity: Math.min(Math.max(1, quantity), 20),
         unitPrice: product.price,
         shippingFee: 0,
         totalPrice: totalPrice,
         status: 'new',
-        notes: notes.trim(),
+        notes: (notes || '').trim().slice(0, 300),
         fbPixelFired: !!product.fbPixelId,
         tiktokPixelFired: !!product.tiktokPixelId
       });
+
+      // Record timestamp to enforce anti-spam cooldown
+      sessionStorage.setItem('allio_last_order_ts', String(Date.now()));
 
       // Track Purchase on Pixels
       trackPixelEvent('Purchase', product.fbPixelId, product.tiktokPixelId, {
@@ -240,6 +255,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
       onOrderSuccess(newOrder);
     } catch (err) {
       console.error('Order creation error', err);
+      setSubmissionError('حدث خطأ أثناء إرسال الطلب. يرجى المحاولة بعد قليل أو التأكد من اتصال الإنترنت.');
       setIsSubmitting(false);
     }
   };
@@ -263,6 +279,23 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="p-5 md:p-8 space-y-6 text-slate-800">
+        {/* Anti-spam / rate-limiting error alert */}
+        {submissionError && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 text-amber-900 text-xs flex items-center justify-between gap-2.5 shadow-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+              <span className="font-semibold leading-relaxed">{submissionError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSubmissionError(null)}
+              className="text-amber-700 hover:text-amber-900 p-1 text-xs font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Global validation alert if form has validation errors */}
         {Object.values(errors).some(Boolean) && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 text-red-800 text-xs flex items-center gap-2.5 shadow-xs">

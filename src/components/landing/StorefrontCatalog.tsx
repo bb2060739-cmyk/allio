@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Product } from '../../types';
-import { Truck, ShieldCheck, RefreshCw, ShoppingBag, ArrowLeft, Star, Sparkles } from 'lucide-react';
+import { fetchMoreProducts } from '../../lib/storage';
+import { Truck, ShieldCheck, RefreshCw, ArrowLeft, Star, Sparkles, Loader2, PlusCircle } from 'lucide-react';
 
 interface StorefrontCatalogProps {
   products: Product[];
@@ -11,6 +12,27 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = ({
   products,
   onSelectProduct
 }) => {
+  const [displayCount, setDisplayCount] = useState<number>(12);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [hasMoreInFirestore, setHasMoreInFirestore] = useState<boolean>(true);
+
+  // Paginated visible products (strictly limited to 12 initially)
+  const visibleProducts = products.slice(0, displayCount);
+  const hasMore = visibleProducts.length < products.length || hasMoreInFirestore;
+
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    try {
+      const result = await fetchMoreProducts(displayCount, 12);
+      setDisplayCount(prev => prev + 12);
+      setHasMoreInFirestore(result.hasMore);
+    } catch (err) {
+      console.warn('Load more error:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 pb-16">
       {/* Top Banner */}
@@ -87,13 +109,18 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = ({
 
       {/* Featured Products Grid */}
       <main className="max-w-6xl mx-auto px-4 pt-10 space-y-6">
-        <div>
-          <h2 className="text-xl font-black text-slate-900">العروض المتوفرة اليوم</h2>
-          <p className="text-xs text-slate-500 mt-0.5">انقر على أي منتج لفتح صفحة الهبوط واستمارة الطلب المباشرة</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-black text-slate-900">العروض المتوفرة اليوم</h2>
+            <p className="text-xs text-slate-500 mt-0.5">انقر على أي منتج لفتح صفحة الهبوط واستمارة الطلب المباشرة</p>
+          </div>
+          <span className="text-[11px] bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full border border-slate-200 self-start sm:self-auto">
+            عرض {visibleProducts.length} من {Math.max(visibleProducts.length, products.length)} منتج (12 لكل صفحة)
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {products.map((product) => {
+          {visibleProducts.map((product) => {
             const originalPrice = product.originalPrice || Math.round(product.price * 1.6);
             return (
               <div
@@ -155,6 +182,32 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = ({
             );
           })}
         </div>
+
+        {/* Load More Button for Pagination & Free Tier Limit Protection */}
+        {hasMore && (
+          <div className="pt-8 pb-4 flex flex-col items-center justify-center gap-2">
+            <button
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+              className="px-6 py-3 bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 hover:border-emerald-500 rounded-2xl text-xs md:text-sm font-black shadow-xs hover:shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isLoadingMore ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  <span>جاري تحميل 12 منتج إضافي...</span>
+                </>
+              ) : (
+                <>
+                  <PlusCircle className="w-4 h-4 text-emerald-600" />
+                  <span>تحميل المزيد من المنتجات (+12 منتج)</span>
+                </>
+              )}
+            </button>
+            <span className="text-[11px] text-slate-400 font-medium">
+              حماية الحصة المجانية: يتم تحميل المنتجات على دفعات (12 في كل دفعة) لتفادي استهلاك القراءات
+            </span>
+          </div>
+        )}
       </main>
     </div>
   );

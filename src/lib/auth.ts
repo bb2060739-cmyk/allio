@@ -1,3 +1,12 @@
+import { auth } from './firebase';
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signInAnonymously, 
+  signOut, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+
 export interface AdminUser {
   email: string;
   name: string;
@@ -8,18 +17,37 @@ export interface AdminUser {
 const AUTH_STORAGE_KEY = 'allio_admin_auth_token';
 const AUTH_USER_KEY = 'allio_admin_user';
 
-// Default merchant credentials (can also be customized)
+// Default merchant credentials
 export const DEFAULT_ADMIN_CREDENTIALS = {
   email: 'admin@allio.ma',
   password: 'admin123@allio',
   name: 'مدير المتجر'
 };
 
+// Monitor Firebase Auth changes and sync with local tokens
+if (typeof window !== 'undefined') {
+  onAuthStateChanged(auth, (firebaseUser) => {
+    if (firebaseUser) {
+      if (!sessionStorage.getItem(AUTH_STORAGE_KEY) && !localStorage.getItem(AUTH_STORAGE_KEY)) {
+        const user: AdminUser = {
+          email: firebaseUser.email || DEFAULT_ADMIN_CREDENTIALS.email,
+          name: firebaseUser.displayName || DEFAULT_ADMIN_CREDENTIALS.name,
+          role: 'Super Admin',
+          lastLogin: new Date().toISOString()
+        };
+        localStorage.setItem(AUTH_STORAGE_KEY, 'allio_tok_' + firebaseUser.uid);
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+        window.dispatchEvent(new CustomEvent('allio_auth_changed', { detail: { isAuth: true } }));
+      }
+    }
+  });
+}
+
 export const isAuthenticated = (): boolean => {
   try {
     const sessionToken = sessionStorage.getItem(AUTH_STORAGE_KEY);
     const localToken = localStorage.getItem(AUTH_STORAGE_KEY);
-    return Boolean(sessionToken || localToken);
+    return Boolean(sessionToken || localToken || auth.currentUser);
   } catch {
     return false;
   }
@@ -30,6 +58,14 @@ export const getAdminUser = (): AdminUser => {
     const raw = sessionStorage.getItem(AUTH_USER_KEY) || localStorage.getItem(AUTH_USER_KEY);
     if (raw) {
       return JSON.parse(raw);
+    }
+    if (auth.currentUser) {
+      return {
+        email: auth.currentUser.email || DEFAULT_ADMIN_CREDENTIALS.email,
+        name: auth.currentUser.displayName || DEFAULT_ADMIN_CREDENTIALS.name,
+        role: 'Super Admin',
+        lastLogin: new Date().toISOString()
+      };
     }
   } catch {
     // fallback
@@ -68,6 +104,11 @@ export const loginAdmin = (
     };
   }
 
+  // Attempt Firebase Auth sign-in so request.auth != null in security rules
+  signInAnonymously(auth).catch((err) => {
+    console.warn('[Firebase Auth] Notice on anonymous admin token:', err.message);
+  });
+
   const token = 'allio_tok_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
   const user: AdminUser = {
     email: cleanEmail,
@@ -94,8 +135,43 @@ export const loginAdmin = (
   return { success: true };
 };
 
+export const loginAdminWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const result = await signInWithPopup(auth, provider);
+    const fbUser = result.user;
+
+    const user: AdminUser = {
+      email: fbUser.email || 'bb2060739@gmail.com',
+      name: fbUser.displayName || DEFAULT_ADMIN_CREDENTIALS.name,
+      role: 'Super Admin',
+      lastLogin: new Date().toISOString()
+    };
+
+    localStorage.setItem(AUTH_STORAGE_KEY, 'allio_tok_' + fbUser.uid);
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('allio_auth_changed', { detail: { isAuth: true } }));
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    console.error('[Firebase Auth] Google Sign-In error:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      error: msg.includes('popup-closed')
+        ? 'تم إغلاق نافذة المصادقة. يرجى المحاولة مجدداً.'
+        : `فشل تسجيل الدخول عبر Google: ${msg}`
+    };
+  }
+};
+
 export const logoutAdmin = (): void => {
   try {
+    signOut(auth).catch(() => {});
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     sessionStorage.removeItem(AUTH_USER_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);

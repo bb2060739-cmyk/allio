@@ -10,8 +10,10 @@ import {
   updateDoc, 
   onSnapshot,
   query,
-  where
+  where,
+  limit
 } from 'firebase/firestore';
+import { getFromCache, setInCache, invalidateCache, DEFAULT_CACHE_TTL } from './cache';
 
 const PRODUCTS_KEY = 'allio_products';
 const ORDERS_KEY = 'allio_orders';
@@ -253,6 +255,76 @@ export const getProductBySlug = (slug: string): Product | undefined => {
   return products.find(p => p.slug === slug || p.id === slug);
 };
 
+/**
+ * Fetch a single product by slug or id directly from Firestore if not in the initial 12.
+ * Consumes exactly 1 read, strictly protecting the free tier from mass document reads.
+ */
+export const fetchProductBySlug = async (slug: string): Promise<Product | undefined> => {
+  // 1. Check local cached products
+  const cached = getProductBySlug(slug);
+  if (cached) return cached;
+
+  // 2. Query Firestore specifically for this single product
+  try {
+    const q = query(collection(db, 'products'), where('slug', '==', slug), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const docSnap = snap.docs[0];
+      const prod = { ...(docSnap.data() as Product), id: docSnap.id };
+      const current = getProducts();
+      if (!current.some(p => p.id === prod.id)) {
+        current.push(prod);
+        safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(current));
+        window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: current }));
+      }
+      return prod;
+    }
+
+    // Direct document ID fallback
+    const directDoc = await getDoc(doc(db, 'products', slug));
+    if (directDoc.exists()) {
+      const prod = { ...(directDoc.data() as Product), id: directDoc.id };
+      const current = getProducts();
+      if (!current.some(p => p.id === prod.id)) {
+        current.push(prod);
+        safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(current));
+        window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: current }));
+      }
+      return prod;
+    }
+  } catch (err) {
+    console.warn('[Firestore] Error fetching product by slug:', err);
+  }
+  return undefined;
+};
+
+/**
+ * Paginated product fetcher: fetches the next batch of 12 products on demand.
+ */
+export const fetchMoreProducts = async (currentCount: number, batchSize: number = 12): Promise<{ products: Product[]; hasMore: boolean }> => {
+  try {
+    const q = query(collection(db, 'products'), limit(currentCount + batchSize));
+    const snap = await getDocs(q);
+    const remoteProducts: Product[] = [];
+    snap.forEach((docSnap) => {
+      remoteProducts.push({
+        ...(docSnap.data() as Product),
+        id: docSnap.id
+      });
+    });
+    remoteProducts.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(remoteProducts));
+    window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: remoteProducts }));
+    return {
+      products: remoteProducts,
+      hasMore: snap.size >= (currentCount + batchSize)
+    };
+  } catch (err) {
+    console.warn('[Firestore] Error fetching more products:', err);
+    return { products: getProducts(), hasMore: false };
+  }
+};
+
 export const saveProduct = async (productData: Partial<Product> & { name: string; price: number }): Promise<Product> => {
   const products = getProducts();
   const slug = productData.slug || productData.name.toLowerCase().trim()
@@ -425,6 +497,7 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
   // 1. Optimistic Local Update
   orders.unshift(newOrder);
   safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+  invalidateCache('dashboard_stats');
 
   // Update product salesCount and stockCount
   const products = getProducts();
@@ -476,6 +549,7 @@ export const updateOrderStatus = async (orderId: string, status: OrderStatus): P
     orders[index].status = status;
     orders[index].updatedAt = updatedAt;
     safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    invalidateCache('dashboard_stats');
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: orders[index] }));
@@ -521,6 +595,7 @@ export const deleteOrder = async (orderId: string): Promise<boolean> => {
   const orders = getOrders();
   const filtered = orders.filter(o => o.id !== targetDocId && o.orderNumber !== targetDocId);
   safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(filtered));
+  invalidateCache('dashboard_stats');
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: filtered }));
@@ -575,10 +650,11 @@ export const initFirestoreRealtimeSync = () => {
   if (isInitialized || typeof window === 'undefined') return;
   isInitialized = true;
 
-  // 1. Sync Products Real-Time Listener
+  // 1. Sync Products Real-Time Listener - Strictly limited to 12 documents to prevent mass document reads
   try {
     const productsCol = collection(db, 'products');
-    onSnapshot(productsCol, (snapshot) => {
+    const initialProductsQuery = query(productsCol, limit(12));
+    onSnapshot(initialProductsQuery, (snapshot) => {
       safeLocalStorage.setItem('allio_products_seeded', 'true');
 
       if (snapshot.empty) {
@@ -615,15 +691,26 @@ export const initFirestoreRealtimeSync = () => {
     console.error('Error starting products realtime listener', err);
   }
 
-  // 2. Sync Orders Real-Time Listener
+  // 2. Sync Orders Real-Time Listener - Strictly limited to last 30 days to protect Firebase Free Tier limits!
   try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoISO = thirtyDaysAgo.toISOString();
+
     const ordersCol = collection(db, 'orders');
-    onSnapshot(ordersCol, (snapshot) => {
+    // FREE TIER OPTIMIZATION: Only fetch orders from the last 30 days
+    const recentOrdersQuery = query(
+      ordersCol,
+      where('createdAt', '>=', thirtyDaysAgoISO)
+    );
+
+    onSnapshot(recentOrdersQuery, (snapshot) => {
       safeLocalStorage.setItem('allio_orders_seeded', 'true');
 
       if (snapshot.empty) {
         // If Firestore is empty (e.g. user deleted all orders), KEEP IT EMPTY. Never auto-reseed dummy orders!
         safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify([]));
+        invalidateCache('dashboard_stats');
         window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: [] }));
         window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: [] } }));
         return;
@@ -642,6 +729,7 @@ export const initFirestoreRealtimeSync = () => {
       // Sort by creation date
       remoteOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(remoteOrders));
+      invalidateCache('dashboard_stats');
       window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: remoteOrders }));
       window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: remoteOrders } }));
     }, (error) => {
@@ -693,8 +781,49 @@ export const initFirestoreRealtimeSync = () => {
   }
 };
 
-export const getDashboardStats = (): DashboardStats => {
-  const orders = getOrders();
+/**
+ * On-demand fetcher for archived orders older than 30 days.
+ * Only called if the admin explicitly clicks "تحميل الطلبات المؤرشفة" in OrdersManager.
+ */
+export const fetchArchivedOrders = async (maxLimit: number = 50): Promise<Order[]> => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoISO = thirtyDaysAgo.toISOString();
+
+    const q = query(
+      collection(db, 'orders'),
+      where('createdAt', '<', thirtyDaysAgoISO),
+      limit(maxLimit)
+    );
+    const snap = await getDocs(q);
+    const older: Order[] = [];
+    snap.forEach((d) => {
+      older.push({ ...(d.data() as Order), id: d.id });
+    });
+    return older;
+  } catch (error) {
+    console.warn('[Firestore] Error fetching archived orders:', error);
+    return [];
+  }
+};
+
+export const getDashboardStats = (ordersInput?: Order[]): DashboardStats => {
+  // If not custom orders input, check in-memory cache first to avoid recomputation
+  if (!ordersInput) {
+    const cached = getFromCache<DashboardStats>('dashboard_stats');
+    if (cached) return cached;
+  }
+
+  const allOrders = ordersInput || getOrders();
+  
+  // Filter for last 30 days to strictly protect Firebase Free Tier limits
+  const thirtyDaysAgoTime = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const orders = allOrders.filter(o => {
+    const t = new Date(o.createdAt).getTime();
+    return isNaN(t) || t >= thirtyDaysAgoTime;
+  });
+
   const totalOrders = orders.length;
   const newOrders = orders.filter(o => o.status === 'new').length;
   const confirmedOrders = orders.filter(o => o.status === 'confirmed').length;
@@ -708,7 +837,7 @@ export const getDashboardStats = (): DashboardStats => {
   const successfulCount = confirmedOrders + shippedOrders;
   const conversionRate = totalOrders > 0 ? Math.round((successfulCount / totalOrders) * 100) : 0;
 
-  return {
+  const result: DashboardStats = {
     totalOrders,
     newOrders,
     confirmedOrders,
@@ -717,6 +846,12 @@ export const getDashboardStats = (): DashboardStats => {
     conversionRate,
     averageOrderValue
   };
+
+  if (!ordersInput) {
+    setInCache('dashboard_stats', result, DEFAULT_CACHE_TTL);
+  }
+
+  return result;
 };
 
 export const formatMoroccanPhoneForWhatsApp = (phone: string): string => {

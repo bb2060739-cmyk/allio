@@ -60,8 +60,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onNavigateToProducts,
   onViewProduct
 }) => {
-  // Chart and filter state
-  const [timeRange, setTimeRange] = useState<'7days' | '30days' | 'all'>('all');
+  // Chart and filter state - default to 30 days to strictly protect Firebase Free Tier limits
+  const [timeRange, setTimeRange] = useState<'7days' | '30days' | 'all'>('30days');
   const [statusFilter, setStatusFilter] = useState<'all' | 'successful'>('all');
   const [revenueGrouping, setRevenueGrouping] = useState<'daily' | 'weekly'>('daily');
 
@@ -324,7 +324,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              آخر 30 يوم
+              آخر 30 يوماً (الافتراضي)
             </button>
             <button
               onClick={() => setTimeRange('all')}

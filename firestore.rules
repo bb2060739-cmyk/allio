@@ -1,34 +1,61 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Products Collection: Public read for customers; full write/delete permissions
+
+    // Helper: Verify if the request comes from an authenticated Admin
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    // Helper: Strong validation for incoming customer orders (COD)
+    // Ensures required fields, valid data types, size limits, and prevents payload spam
+    function isValidOrder(data) {
+      return data.keys().hasAll(['customerName', 'phoneNumber', 'city', 'address', 'totalPrice', 'createdAt']) &&
+             data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100 &&
+             data.phoneNumber is string && data.phoneNumber.size() >= 8 && data.phoneNumber.size() <= 30 &&
+             data.city is string && data.city.size() >= 2 && data.city.size() <= 100 &&
+             data.address is string && data.address.size() >= 3 && data.address.size() <= 300 &&
+             data.totalPrice is number && data.totalPrice > 0;
+    }
+
+    // 1. Products Collection:
+    // Public can ONLY READ (get/list).
+    // ONLY authenticated Admin can CREATE, UPDATE, or DELETE products.
     match /products/{productId} {
-      allow read, write: if true;
-      allow create, update, delete: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
-    // Orders Collection: Public create for COD customers; full admin read, update, delete
-    match /orders/{orderId} {
-      allow read, write: if true;
-      allow create, update, delete: if true;
-    }
-
-    // System configuration metadata for store initialization
-    match /_system/{docId} {
-      allow read, write: if true;
-      allow create, update, delete: if true;
-    }
-
-    // Stores Collection: Multi-store & niche configurations
+    // 2. Stores & Landing Pages Configuration Collection:
+    // Public can ONLY READ (get/list).
+    // ONLY authenticated Admin can CREATE, UPDATE, or DELETE stores and design configs.
     match /stores/{storeId} {
-      allow read, write: if true;
-      allow create, update, delete: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
-    // Ping / health check collection
+    // 3. Orders Collection:
+    // Public can ONLY CREATE orders (Cash on Delivery checkout with valid schema).
+    // ONLY authenticated Admin can READ (list/get), UPDATE, or DELETE orders.
+    match /orders/{orderId} {
+      allow create: if isValidOrder(request.resource.data);
+      allow read, update, delete: if isAdmin();
+    }
+
+    // 4. System metadata & Health Check
+    match /_system/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /test/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
-

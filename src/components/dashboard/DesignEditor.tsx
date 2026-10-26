@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Store, Product, LandingPageDesignConfig } from '../../types';
 import { saveStore, saveProduct, getDefaultDesignConfig } from '../../lib/storage';
 import { 
   Palette, Layers, Check, Eye, EyeOff, Plus, Trash2, 
   Sparkles, ShieldCheck, Star, ArrowRight, Loader2, Save,
-  Monitor, Smartphone, Store as StoreIcon, Image as ImageIcon, Type
+  Monitor, Smartphone, Store as StoreIcon, Image as ImageIcon, Type,
+  Upload, AlertCircle, X
 } from 'lucide-react';
+import { validateImageFile, processAndCompressImage, MAX_IMAGE_SIZE_MB } from '../../lib/imageOptimization';
 
 interface DesignEditorProps {
   stores: Store[];
@@ -61,6 +63,64 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
   const [storeLogoText, setStoreLogoText] = useState(activeStore?.design?.logoText || activeStore?.name || 'Allio');
   const [storeLogoImageUrl, setStoreLogoImageUrl] = useState(activeStore?.design?.logoImageUrl || '');
   const [storeAnnouncement, setStoreAnnouncement] = useState(activeStore?.design?.announcementText || 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام');
+
+  // Image upload states & refs (1MB limit enforcement)
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const heroFileInputRef = useRef<HTMLInputElement>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingHero, setIsUploadingHero] = useState(false);
+
+  const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImageError(null);
+    const val = validateImageFile(file);
+    if (!val.valid) {
+      setImageError(val.error || `حجم الصورة يتجاوز الحد الأقصى المسموح به (${MAX_IMAGE_SIZE_MB} ميغابايت).`);
+      if (logoFileInputRef.current) logoFileInputRef.current.value = '';
+      return;
+    }
+
+    try {
+      setIsUploadingLogo(true);
+      const { dataUrl } = await processAndCompressImage(file, 800);
+      setStoreLogoImageUrl(dataUrl);
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'فشل رفع الشعار');
+    } finally {
+      setIsUploadingLogo(false);
+      if (logoFileInputRef.current) logoFileInputRef.current.value = '';
+    }
+  };
+
+  const handleHeroFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImageError(null);
+    const val = validateImageFile(file);
+    if (!val.valid) {
+      setImageError(val.error || `حجم الصورة يتجاوز الحد الأقصى المسموح به (${MAX_IMAGE_SIZE_MB} ميغابايت).`);
+      if (heroFileInputRef.current) heroFileInputRef.current.value = '';
+      return;
+    }
+
+    try {
+      setIsUploadingHero(true);
+      const { dataUrl } = await processAndCompressImage(file, 1400);
+      setDesignConfig(prev => ({
+        ...prev,
+        hero: { ...prev.hero, heroImageUrl: dataUrl }
+      }));
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'فشل رفع صورة الواجهة');
+    } finally {
+      setIsUploadingHero(false);
+      if (heroFileInputRef.current) heroFileInputRef.current.value = '';
+    }
+  };
 
   // Sync store form when active store changes
   useEffect(() => {
@@ -349,16 +409,65 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                   </span>
                 </div>
               ) : (
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">رابط صورة الشعار (Image URL):</label>
-                  <input
-                    type="url"
-                    value={storeLogoImageUrl}
-                    onChange={(e) => setStoreLogoImageUrl(e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    dir="ltr"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-slate-50 focus:bg-white"
-                  />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700">صورة الشعار (Image Logo):</label>
+                    <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
+                      أقصى حجم: 1 ميغابايت (1MB Max)
+                    </span>
+                  </div>
+
+                  {imageError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs flex items-center justify-between font-semibold">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        <span>{imageError}</span>
+                      </div>
+                      <button type="button" onClick={() => setImageError(null)} className="text-rose-600 p-1">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={storeLogoImageUrl}
+                      onChange={(e) => setStoreLogoImageUrl(e.target.value)}
+                      placeholder="https://example.com/logo.png"
+                      dir="ltr"
+                      className="flex-1 px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-slate-50 focus:bg-white"
+                    />
+                    <input
+                      type="file"
+                      ref={logoFileInputRef}
+                      accept="image/*"
+                      onChange={handleLogoFileSelect}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploadingLogo}
+                      onClick={() => logoFileInputRef.current?.click()}
+                      className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {isUploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      <span>رفع (≤ 1MB)</span>
+                    </button>
+                  </div>
+                  {storeLogoImageUrl && (
+                    <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+                      <img src={storeLogoImageUrl} alt="Logo preview" className="h-8 max-w-[120px] object-contain" />
+                      <span className="text-[11px] text-slate-500 truncate flex-1">تم حفظ الشعار</span>
+                      <button
+                        type="button"
+                        onClick={() => setStoreLogoImageUrl('')}
+                        className="text-xs text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                      >
+                        إزالة
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -575,18 +684,38 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="font-bold text-slate-700 block mb-1">رابط صورة الواجهة البديلة (اختياري):</label>
-                      <input
-                        type="url"
-                        placeholder="اتركه فارغاً لاستخدام صور المنتج"
-                        value={designConfig.hero.heroImageUrl || ''}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          hero: { ...designConfig.hero, heroImageUrl: e.target.value }
-                        })}
-                        dir="ltr"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-mono"
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-bold text-slate-700">صورة الواجهة (اختياري - ≤ 1MB):</label>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          placeholder="اتركه فارغاً لاستخدام صور المنتج"
+                          value={designConfig.hero.heroImageUrl || ''}
+                          onChange={(e) => setDesignConfig({
+                            ...designConfig,
+                            hero: { ...designConfig.hero, heroImageUrl: e.target.value }
+                          })}
+                          dir="ltr"
+                          className="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-mono"
+                        />
+                        <input
+                          type="file"
+                          ref={heroFileInputRef}
+                          accept="image/*"
+                          onChange={handleHeroFileSelect}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          disabled={isUploadingHero}
+                          onClick={() => heroFileInputRef.current?.click()}
+                          className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {isUploadingHero ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                          <span>رفع</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

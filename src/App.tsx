@@ -8,7 +8,7 @@ import {
   Navigate 
 } from 'react-router-dom';
 import { Product, Order, Store } from './types';
-import { getProducts, getOrders, getDashboardStats, saveProduct, initFirestoreRealtimeSync, getStores } from './lib/storage';
+import { getProducts, getOrders, getDashboardStats, saveProduct, initFirestoreRealtimeSync, getStores, fetchProductBySlug } from './lib/storage';
 import { isAuthenticated, getAdminUser, logoutAdmin } from './lib/auth';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { AdminLayout } from './components/admin/AdminLayout';
@@ -24,7 +24,7 @@ import { StorefrontCatalog } from './components/landing/StorefrontCatalog';
 import { ProductNotFound } from './components/landing/ProductNotFound';
 import { 
   Smartphone, Monitor, ExternalLink, ArrowRight, 
-  Copy, Check, LogOut 
+  Copy, Check, LogOut, Loader2 
 } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 
@@ -223,8 +223,32 @@ function DynamicLandingPageRoute({
     return <Navigate to="/admin" replace />;
   }
 
-  // Look up product by slug or id
-  const product = products.find(p => p.slug === slug || p.id === slug);
+  const [individualProduct, setIndividualProduct] = useState<Product | null>(null);
+  const [isFetchingSingle, setIsFetchingSingle] = useState(false);
+
+  // Look up product in cached/synced list or from targeted single-document fetch
+  const product = products.find(p => p.slug === slug || p.id === slug) || individualProduct;
+
+  useEffect(() => {
+    if (!product && slug) {
+      setIsFetchingSingle(true);
+      fetchProductBySlug(slug).then((fetched) => {
+        if (fetched) {
+          setIndividualProduct(fetched);
+        }
+        setIsFetchingSingle(false);
+      });
+    }
+  }, [product, slug]);
+
+  if (isFetchingSingle) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mb-2" />
+        <p className="text-xs text-slate-500 font-bold">جاري تحميل صفحة المنتج...</p>
+      </div>
+    );
+  }
 
   if (!product) {
     return <ProductNotFound slug={slug} />;
@@ -432,7 +456,6 @@ function AdminRoute({
       activeTab={adminTab}
       onSelectTab={(tab) => {
         setAdminTab(tab);
-        onDataChange();
       }}
       onOpenCreateProduct={() => {
         setEditingProduct(null);
