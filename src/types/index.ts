@@ -9,6 +9,7 @@ export interface StoreDesign {
   logoType: 'text' | 'image';
   logoText: string;
   logoImageUrl?: string;
+  faviconUrl?: string;
   announcementText?: LocalizedString;
   // Storefront Catalog CMS customization
   heroBadge?: LocalizedString;

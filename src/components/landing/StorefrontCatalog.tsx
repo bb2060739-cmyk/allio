@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Product, Store } from '../../types';
 import { fetchMoreProducts, DEFAULT_STORE } from '../../lib/storage';
 import { getLocalizedText } from '../../utils/i18n';
+import { useDynamicHead } from '../../utils/dynamicHead';
 import { LanguageSwitcher } from '../common/LanguageSwitcher';
 import { Truck, ShieldCheck, RefreshCw, ArrowLeft, ArrowRight, Star, Sparkles, Loader2, PlusCircle } from 'lucide-react';
 
@@ -30,6 +31,17 @@ export const StorefrontCatalog: React.FC<StorefrontCatalogProps> = ({
   const primaryColor = design.primaryColor || '#059669';
   const secondaryColor = design.secondaryColor || '#0f172a';
   const announcementText = getLocalizedText(design.announcementText, currentLang);
+
+  // Dynamic Browser Tab (Title & Favicon) synchronization reusing already loaded store JSON
+  const storeHeroHeadline = getLocalizedText(design.heroTitle, currentLang);
+  const dynamicTitle = storeHeroHeadline ? `${store.name} — ${storeHeroHeadline}` : store.name;
+  useDynamicHead({
+    title: dynamicTitle,
+    storeName: store.name,
+    logoImageUrl: design.logoImageUrl,
+    faviconUrl: design.faviconUrl,
+    primaryColor
+  });
 
   // Paginated visible products (strictly limited to 12 initially)
   const visibleProducts = products.slice(0, displayCount);

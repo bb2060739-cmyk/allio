@@ -8,7 +8,7 @@ import {
   Sparkles, ShieldCheck, Star, ArrowRight, Loader2, Save,
   Store as StoreIcon, Image as ImageIcon, Type,
   Upload, AlertCircle, X, ShoppingBag, Truck, RefreshCw,
-  CheckCircle, Flame, Languages
+  CheckCircle, Flame, Languages, Globe
 } from 'lucide-react';
 import { validateImageFile, processAndCompressImage, MAX_IMAGE_SIZE_MB } from '../../lib/imageOptimization';
 
@@ -99,6 +99,7 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
   const [storeLogoType, setStoreLogoType] = useState<'text' | 'image'>(activeStore?.design?.logoType || 'text');
   const [storeLogoText, setStoreLogoText] = useState(activeStore?.design?.logoText || activeStore?.name || 'Allio');
   const [storeLogoImageUrl, setStoreLogoImageUrl] = useState(activeStore?.design?.logoImageUrl || '');
+  const [storeFaviconUrl, setStoreFaviconUrl] = useState(activeStore?.design?.faviconUrl || activeStore?.design?.logoImageUrl || '');
   const [storeAnnouncement, setStoreAnnouncement] = useState<LocalizedString>(activeStore?.design?.announcementText || 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام');
 
   // Storefront Catalog CMS Fields
@@ -143,6 +144,7 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
       setIsUploadingLogo(true);
       const { dataUrl } = await processAndCompressImage(file, 800);
       setStoreLogoImageUrl(dataUrl);
+      setStoreFaviconUrl(dataUrl);
     } catch (err) {
       setImageError(err instanceof Error ? err.message : 'فشل رفع الشعار');
     } finally {
@@ -186,6 +188,7 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
       setStoreLogoType(activeStore.design?.logoType || 'text');
       setStoreLogoText(activeStore.design?.logoText || activeStore.name || 'Allio');
       setStoreLogoImageUrl(activeStore.design?.logoImageUrl || '');
+      setStoreFaviconUrl(activeStore.design?.faviconUrl || activeStore.design?.logoImageUrl || '');
       setStoreAnnouncement(activeStore.design?.announcementText !== undefined ? activeStore.design.announcementText : 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام');
 
       setStoreHeroBadge(activeStore.design?.heroBadge !== undefined ? activeStore.design.heroBadge : 'منصة الدفع عند الاستلام في المغرب');
@@ -241,6 +244,7 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
           logoType: storeLogoType,
           logoText: storeLogoText.trim() || 'Allio',
           logoImageUrl: storeLogoImageUrl.trim(),
+          faviconUrl: storeFaviconUrl.trim() || storeLogoImageUrl.trim(),
           announcementText: cleanLocalizedVal(storeAnnouncement),
           heroBadge: cleanLocalizedVal(storeHeroBadge),
           heroTitle: cleanLocalizedVal(storeHeroTitle),
@@ -487,12 +491,21 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
               </div>
             </div>
 
-            {/* Logo & Announcement Bar */}
+            {/* Logo, Favicon & Announcement Bar */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <Type className="w-4 h-4 text-emerald-600" />
-                <span>شعار المتجر وشريط الإعلانات</span>
-              </h3>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <Type className="w-4 h-4 text-emerald-600" />
+                  <span>هوية المتجر، الشعار وأيقونة التبويب (Store Logo & Favicon)</span>
+                </h3>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Globe className="w-3 h-3 text-emerald-600" />
+                  <span>Dynamic Favicon & Title</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                تحكم في اسم وشعار المتجر وأيقونة التبويب في المتصفح (Favicon). يتم تطبيق الأيقونة والعنوان ديناميكياً على تبويب المتصفح بمجرد تحميل متجرك أو صفحة الهبوط.
+              </p>
 
               {/* Logo Type Selector */}
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -518,13 +531,13 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                   }`}
                 >
                   <ImageIcon className="w-4 h-4" />
-                  <span>شعار بصري / صورة (Image Logo)</span>
+                  <span>شعار بصري / أيقونة (Image Logo / Favicon)</span>
                 </button>
               </div>
 
               {storeLogoType === 'text' ? (
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">النص المعروض في الشعار:</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">النص المعروض في الشعار وتبويب المتصفح:</label>
                   <input
                     type="text"
                     value={storeLogoText}
@@ -532,11 +545,16 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                     placeholder="Allio"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-900 bg-slate-50 focus:bg-white"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    سيتم توليد أيقونة تبويب (Favicon) ذكية وتلقائية بألوان متجرك مع الحرف الأول من الاسم.
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700">صورة الشعار (Image Logo):</label>
+                    <label className="text-xs font-bold text-slate-700">
+                      صورة شعار المتجر وأيقونة التبويب (Store Logo / Favicon):
+                    </label>
                     <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
                       أقصى حجم: 1 ميغابايت (1MB Max)
                     </span>
@@ -558,8 +576,11 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                     <input
                       type="url"
                       value={storeLogoImageUrl}
-                      onChange={(e) => setStoreLogoImageUrl(e.target.value)}
-                      placeholder="https://example.com/logo.png"
+                      onChange={(e) => {
+                        setStoreLogoImageUrl(e.target.value);
+                        setStoreFaviconUrl(e.target.value);
+                      }}
+                      placeholder="https://example.com/logo-or-favicon.png"
                       dir="ltr"
                       className="flex-1 px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-slate-50 focus:bg-white"
                     />
@@ -577,11 +598,56 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                       className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer disabled:opacity-50"
                     >
                       {isUploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                      <span>رفع (≤ 1MB)</span>
+                      <span>رفع صورة (≤ 1MB)</span>
                     </button>
                   </div>
+
+                  {/* Thumbnail Preview */}
+                  {storeLogoImageUrl && (
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-lg border border-slate-200 flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-2xs">
+                        <img src={storeLogoImageUrl} alt="Store Logo / Favicon" className="w-full h-full object-contain" />
+                      </div>
+                      <div className="text-xs">
+                        <span className="font-bold text-slate-800 block">شعار المتجر وأيقونة Favicon النشطة</span>
+                        <span className="text-[10px] text-slate-500">تظهر في ترويسة المتجر وتبويب المتصفح</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* Live Browser Tab Simulation Preview */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/90 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>معاينة مظهر تبويب المتصفح الحي (Browser Tab Live Preview):</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-full font-bold">
+                    تحديث فوري
+                  </span>
+                </div>
+
+                <div className="bg-slate-200/70 p-2 rounded-lg flex items-center">
+                  <div className="bg-white px-3 py-1.5 rounded-md shadow-2xs flex items-center gap-2 max-w-sm border border-slate-200/70">
+                    {storeLogoType === 'image' && storeLogoImageUrl ? (
+                      <img src={storeLogoImageUrl} alt="Favicon" className="w-4 h-4 object-contain rounded-xs shrink-0" />
+                    ) : (
+                      <div 
+                        className="w-4 h-4 rounded text-[9px] font-black text-white flex items-center justify-center shrink-0 shadow-2xs"
+                        style={{ backgroundColor: storePrimaryColor }}
+                      >
+                        {(storeLogoText || activeStore?.name || 'A').trim().charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-xs font-bold text-slate-800 truncate">
+                      {storeLogoText || activeStore?.name || 'Allio'} {getFieldVal(storeHeroTitle, cmsLang) ? `— ${getFieldVal(storeHeroTitle, cmsLang)}` : ''}
+                    </span>
+                    <X className="w-3 h-3 text-slate-400 ml-auto shrink-0 cursor-default" />
+                  </div>
+                </div>
+              </div>
 
               {/* Announcement Bar */}
               <div className="pt-3 border-t border-slate-100 space-y-1">

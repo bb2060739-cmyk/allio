@@ -1,6 +1,7 @@
 import React from 'react';
 import { AdminUser, logoutAdmin } from '../../lib/auth';
 import { LanguageSwitcher } from '../common/LanguageSwitcher';
+import { useDynamicHead } from '../../utils/dynamicHead';
 import { 
   BarChart3, Layers, ShoppingCart, Activity, 
   ExternalLink, LogOut, ShieldCheck, UserCheck,
@@ -28,6 +29,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   onLogout,
   children
 }) => {
+  useDynamicHead({
+    title: 'Allio Admin | لوحة التحكم',
+    storeName: 'Allio Admin',
+    primaryColor: '#059669'
+  });
+
   const handleLogout = () => {
     if (window.confirm('هل تريد بالتأكيد تسجيل الخروج من لوحة التحكم؟')) {
       logoutAdmin();

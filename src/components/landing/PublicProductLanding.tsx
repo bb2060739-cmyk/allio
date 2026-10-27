@@ -6,6 +6,7 @@ import { ThankYouPage } from './ThankYouPage';
 import { initTrackingPixels, trackPixelEvent } from '../../lib/pixelTracker';
 import { getStoreById, getDefaultDesignConfig } from '../../lib/storage';
 import { getLocalizedText } from '../../utils/i18n';
+import { useDynamicHead } from '../../utils/dynamicHead';
 import { LanguageSwitcher } from '../common/LanguageSwitcher';
 import { 
   Truck, ShieldCheck, RefreshCw, Star, CheckCircle, 
@@ -42,6 +43,15 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
   const logoText = store.design?.logoText || 'Allio';
   const logoImageUrl = store.design?.logoImageUrl;
   const announcement = getLocalizedText(store.design?.announcementText, currentLang) || t('landing.announcement');
+
+  // Dynamic Browser Tab (Title & Favicon) synchronization using already loaded product & store JSON
+  useDynamicHead({
+    title: `${productName} | ${store.name || 'Allio'}`,
+    storeName: store.name || 'Allio',
+    logoImageUrl: store.design?.faviconUrl || store.design?.logoImageUrl || product.images?.[0],
+    faviconUrl: store.design?.faviconUrl,
+    primaryColor
+  });
 
   // Initialize pixels on mount and track ViewContent
   useEffect(() => {

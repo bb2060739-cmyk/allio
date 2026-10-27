@@ -1,12 +1,17 @@
 import React from 'react';
 import { ShoppingBag, ArrowRight, Home } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useDynamicHead } from '../../utils/dynamicHead';
 
 interface ProductNotFoundProps {
   slug?: string;
 }
 
 export const ProductNotFound: React.FC<ProductNotFoundProps> = ({ slug }) => {
+  useDynamicHead({
+    title: '404 — الصفحة غير متوفرة | Allio',
+    storeName: 'Allio'
+  });
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 text-center">
       <div className="bg-white rounded-3xl p-8 max-w-md w-full border border-slate-200 shadow-xl space-y-5">
