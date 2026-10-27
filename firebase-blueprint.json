@@ -41,6 +41,7 @@
       "properties": {
         "id": { "type": "string" },
         "orderNumber": { "type": "string" },
+        "storeId": { "type": "string" },
         "productId": { "type": "string" },
         "productName": { "type": "string" },
         "customerName": { "type": "string" },

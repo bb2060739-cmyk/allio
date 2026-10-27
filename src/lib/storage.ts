@@ -544,16 +544,32 @@ export const getOrders = (): Order[] => {
   }
 };
 
-export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'> & { id?: string; orderNumber?: string }): Promise<Order> => {
+export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'> & { id?: string; orderNumber?: string; storeId?: string }): Promise<Order> => {
   const orders = getOrders();
   const newId = orderData.id?.trim() || ('ord-' + Date.now());
   const newOrderNumber = orderData.orderNumber?.trim() || ('AL-' + (1050 + orders.length));
+  const nowISO = new Date().toISOString();
+
   const newOrder: Order = {
-    ...orderData,
     id: newId,
     orderNumber: newOrderNumber,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    storeId: orderData.storeId?.trim() || 'store-default',
+    productId: orderData.productId,
+    productName: orderData.productName,
+    customerName: orderData.customerName.trim(),
+    phoneNumber: orderData.phoneNumber.trim(),
+    city: orderData.city.trim(),
+    address: orderData.address.trim(),
+    quantity: Number(orderData.quantity) || 1,
+    unitPrice: Number(orderData.unitPrice) || 0,
+    shippingFee: Number(orderData.shippingFee) || 0,
+    totalPrice: Number(orderData.totalPrice) || 0,
+    status: orderData.status || 'new',
+    notes: orderData.notes ? String(orderData.notes).trim() : '',
+    createdAt: nowISO,
+    updatedAt: nowISO,
+    fbPixelFired: Boolean(orderData.fbPixelFired),
+    tiktokPixelFired: Boolean(orderData.tiktokPixelFired)
   };
 
   // 1. Optimistic Local Update
@@ -588,13 +604,22 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
   }
 
   // 2. Permanent Cloud Firestore Sync via setDoc directly to Firebase
+  // Sanitize object so NO undefined values can ever crash Firestore setDoc
+  const sanitizedDoc: Record<string, any> = {};
+  for (const [key, value] of Object.entries(newOrder)) {
+    if (value !== undefined) {
+      sanitizedDoc[key] = value;
+    }
+  }
+
   try {
     const orderRef = doc(db, 'orders', newOrder.id);
-    await setDoc(orderRef, newOrder);
-    console.log(`[Firebase] Successfully created order doc: orders/${newOrder.id}`);
+    await setDoc(orderRef, sanitizedDoc);
+    console.log(`[Firebase] Successfully created order doc: orders/${newOrder.id}`, sanitizedDoc);
   } catch (error) {
     console.error(`[Firebase] Error creating order doc: orders/${newOrder.id}:`, error);
     handleFirestoreError(error, OperationType.CREATE, `orders/${newOrder.id}`);
+    throw error;
   }
 
   return newOrder;
@@ -766,11 +791,47 @@ export const initFirestoreRealtimeSync = () => {
       where('createdAt', '>=', thirtyDaysAgoISO)
     );
 
+    const parseOrderDoc = (docSnap: any): Order => {
+      const data = docSnap.data();
+      let createdAtStr = new Date().toISOString();
+      if (data.createdAt) {
+        if (typeof data.createdAt === 'string') {
+          createdAtStr = data.createdAt;
+        } else if (typeof data.createdAt.toDate === 'function') {
+          createdAtStr = data.createdAt.toDate().toISOString();
+        } else if (typeof data.createdAt === 'number') {
+          createdAtStr = new Date(data.createdAt).toISOString();
+        }
+      }
+
+      return {
+        id: docSnap.id,
+        orderNumber: data.orderNumber || ('AL-' + docSnap.id.slice(-4)),
+        storeId: data.storeId || 'store-default',
+        productId: data.productId || '',
+        productName: data.productName || 'منتج',
+        customerName: data.customerName || 'زبون',
+        phoneNumber: data.phoneNumber || '',
+        city: data.city || 'الدار البيضاء',
+        address: data.address || '',
+        quantity: Number(data.quantity) || 1,
+        unitPrice: Number(data.unitPrice) || 0,
+        shippingFee: Number(data.shippingFee) || 0,
+        totalPrice: Number(data.totalPrice) || 0,
+        status: data.status || 'new',
+        notes: data.notes || '',
+        createdAt: createdAtStr,
+        updatedAt: data.updatedAt || createdAtStr,
+        fbPixelFired: Boolean(data.fbPixelFired),
+        tiktokPixelFired: Boolean(data.tiktokPixelFired)
+      };
+    };
+
     onSnapshot(recentOrdersQuery, (snapshot) => {
       safeLocalStorage.setItem('allio_orders_seeded', 'true');
 
       if (snapshot.empty) {
-        // If Firestore is empty (e.g. user deleted all orders), KEEP IT EMPTY. Never auto-reseed dummy orders!
+        // Only clear if local storage doesn't have newer orders or if truly empty
         safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify([]));
         invalidateCache('dashboard_stats');
         window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: [] }));
@@ -780,24 +841,36 @@ export const initFirestoreRealtimeSync = () => {
 
       const remoteOrders: Order[] = [];
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as Order;
-        // CRITICAL: Bind id directly to docSnap.id to ensure true Firebase document ID is used
-        remoteOrders.push({
-          ...data,
-          id: docSnap.id
-        });
+        remoteOrders.push(parseOrderDoc(docSnap));
       });
 
-      // Sort by creation date
+      // Sort by creation date (newest first)
       remoteOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(remoteOrders));
       invalidateCache('dashboard_stats');
       window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: remoteOrders }));
       window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: remoteOrders } }));
     }, (error) => {
-      if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
-        console.warn('[Firestore Sync] Orders listener operating in offline cache mode:', error.message);
-      } else {
+      console.warn('[Firestore Sync] Notice on 30-day range query, activating fallback listener:', error.message);
+      // Fallback: Query up to 50 latest orders without range restriction to guarantee no orders are hidden
+      try {
+        const fallbackQuery = query(ordersCol, limit(50));
+        onSnapshot(fallbackQuery, (fallbackSnap) => {
+          if (!fallbackSnap.empty) {
+            const fallbackOrders: Order[] = [];
+            fallbackSnap.forEach((docSnap) => {
+              fallbackOrders.push(parseOrderDoc(docSnap));
+            });
+            fallbackOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(fallbackOrders));
+            invalidateCache('dashboard_stats');
+            window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: fallbackOrders }));
+            window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: fallbackOrders } }));
+          }
+        }, (fbErr) => {
+          handleFirestoreError(fbErr, OperationType.LIST, 'orders');
+        });
+      } catch (secErr) {
         handleFirestoreError(error, OperationType.LIST, 'orders');
       }
     });
@@ -869,6 +942,62 @@ export const fetchArchivedOrders = async (maxLimit: number = 50): Promise<Order[
     return [];
   }
 };
+
+/**
+ * Direct on-demand Firestore refresh for current orders.
+ * Ensures the admin dashboard can force-sync directly from the cloud.
+ */
+export const refreshOrdersFromFirestore = async (): Promise<Order[]> => {
+  try {
+    const q = query(collection(db, 'orders'), limit(50));
+    const snap = await getDocs(q);
+    const remoteOrders: Order[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      let createdAtStr = new Date().toISOString();
+      if (data.createdAt) {
+        if (typeof data.createdAt === 'string') createdAtStr = data.createdAt;
+        else if (typeof data.createdAt.toDate === 'function') createdAtStr = data.createdAt.toDate().toISOString();
+        else if (typeof data.createdAt === 'number') createdAtStr = new Date(data.createdAt).toISOString();
+      }
+
+      remoteOrders.push({
+        id: docSnap.id,
+        orderNumber: data.orderNumber || ('AL-' + docSnap.id.slice(-4)),
+        storeId: data.storeId || 'store-default',
+        productId: data.productId || '',
+        productName: data.productName || 'منتج',
+        customerName: data.customerName || 'زبون',
+        phoneNumber: data.phoneNumber || '',
+        city: data.city || 'الدار البيضاء',
+        address: data.address || '',
+        quantity: Number(data.quantity) || 1,
+        unitPrice: Number(data.unitPrice) || 0,
+        shippingFee: Number(data.shippingFee) || 0,
+        totalPrice: Number(data.totalPrice) || 0,
+        status: data.status || 'new',
+        notes: data.notes || '',
+        createdAt: createdAtStr,
+        updatedAt: data.updatedAt || createdAtStr,
+        fbPixelFired: Boolean(data.fbPixelFired),
+        tiktokPixelFired: Boolean(data.tiktokPixelFired)
+      });
+    });
+
+    remoteOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    safeLocalStorage.setItem(ORDERS_KEY, JSON.stringify(remoteOrders));
+    invalidateCache('dashboard_stats');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('allio_orders_updated', { detail: remoteOrders }));
+      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'orders', data: remoteOrders } }));
+    }
+    return remoteOrders;
+  } catch (err) {
+    console.warn('[Firestore] Error on direct refreshOrdersFromFirestore:', err);
+    return getOrders();
+  }
+};
+
 
 export const getDashboardStats = (ordersInput?: Order[]): DashboardStats => {
   // If not custom orders input, check in-memory cache first to avoid recomputation

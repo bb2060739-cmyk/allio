@@ -41,6 +41,18 @@ if (typeof window !== 'undefined') {
       }
     }
   });
+
+  // Automatically ensure Firebase Auth is connected for admin session
+  try {
+    const hasAdminSession = Boolean(sessionStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem(AUTH_STORAGE_KEY));
+    if (hasAdminSession && !auth.currentUser) {
+      signInAnonymously(auth).catch((err) => {
+        console.warn('[Firebase Auth] Notice on auto-signin token:', err.message);
+      });
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export const isAuthenticated = (): boolean => {

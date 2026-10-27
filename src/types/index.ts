@@ -169,6 +169,7 @@ export interface Product {
 export interface Order {
   id: string;
   orderNumber: string;
+  storeId?: string;
   productId: string;
   productName: string;
   customerName: string;

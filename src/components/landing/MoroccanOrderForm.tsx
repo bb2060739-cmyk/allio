@@ -238,6 +238,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     try {
       const productNameLocalized = getLocalizedText(product.name, currentLang);
       const newOrder = await createOrder({
+        storeId: product.storeId || store.id || 'store-default',
         productId: product.id,
         productName: productNameLocalized,
         customerName: customerName.trim(),
@@ -249,7 +250,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
         shippingFee: 0,
         totalPrice,
         status: 'new',
-        notes: notes.trim() || undefined
+        notes: notes.trim()
       });
 
       sessionStorage.setItem('allio_last_order_ts', Date.now().toString());
@@ -264,7 +265,11 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
 
       onOrderSuccess(newOrder);
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'حدث خطأ أثناء حفظ الطلب.';
+      console.error('[Checkout Error] Order submission to Firebase failed:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert(isRTL 
+        ? `فشل إرسال الطلب إلى Firebase: ${errorMessage}` 
+        : `Failed to submit order to Firebase: ${errorMessage}`);
       setSubmissionError(errorMessage);
     } finally {
       setIsSubmitting(false);

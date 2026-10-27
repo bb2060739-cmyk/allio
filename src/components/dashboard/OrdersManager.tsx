@@ -6,7 +6,9 @@ import {
   createOrder,
   exportOrdersToExcelCSV, 
   generateWhatsAppConfirmLink,
-  getProducts 
+  getProducts,
+  getStores,
+  refreshOrdersFromFirestore
 } from '../../lib/storage';
 import { getLocalizedText } from '../../utils/i18n';
 import { 
@@ -29,7 +31,9 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedCityFilter, setSelectedCityFilter] = useState<string>('all');
+  const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const stores = getStores();
 
   // Modal & Feedback States
   const [orderToDelete, setProductOrderToDelete] = useState<Order | null>(null);
@@ -70,8 +74,13 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
     };
   }, [onOrdersChange]);
 
-  const handleManualRefresh = () => {
+  const handleManualRefresh = async () => {
     setIsRefreshing(true);
+    try {
+      await refreshOrdersFromFirestore();
+    } catch {
+      // ignore
+    }
     onOrdersChange();
     setTimeout(() => setIsRefreshing(false), 500);
   };
@@ -231,7 +240,12 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
 
       const totalPrice = (Number(formUnitPrice) * Number(formQuantity)) + Number(formShippingFee);
 
+      const targetStoreId = (formProductId !== 'custom' 
+        ? availableProducts.find(p => p.id === formProductId)?.storeId 
+        : undefined) || 'store-default';
+
       const created = await createOrder({
+        storeId: targetStoreId,
         productId: finalProductId,
         productName: finalProductName,
         customerName: formCustomerName.trim(),
@@ -277,8 +291,9 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
 
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     const matchesCity = selectedCityFilter === 'all' || order.city === selectedCityFilter;
+    const matchesStore = selectedStoreFilter === 'all' || order.storeId === selectedStoreFilter || (!order.storeId && selectedStoreFilter === 'store-default');
 
-    return matchesSearch && matchesStatus && matchesCity;
+    return matchesSearch && matchesStatus && matchesCity && matchesStore;
   });
 
   // Unique cities from orders for filtering
@@ -383,8 +398,22 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
           />
         </div>
 
-        {/* Action Controls: Export Excel & City Filter */}
+        {/* Action Controls: Store Filter, City Filter, Live Refresh & Export Excel */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Store filter */}
+          {stores.length > 1 && (
+            <select
+              value={selectedStoreFilter}
+              onChange={(e) => setSelectedStoreFilter(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none cursor-pointer"
+            >
+              <option value="all">جميع المتاجر ({stores.length})</option>
+              {stores.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+
           {/* City filter */}
           <select
             value={selectedCityFilter}
@@ -400,7 +429,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
           {/* Live Refresh Button */}
           <button
             onClick={handleManualRefresh}
-            title="تحديث قائمة الطلبات الآن من السحابة"
+            title="تحديث قائمة الطلبات فوراً من Firebase"
             className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex items-center justify-center cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />

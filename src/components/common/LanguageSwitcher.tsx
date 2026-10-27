@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, SupportedLanguage } from '../../i18n';
-import { Globe, Check, ChevronDown } from 'lucide-react';
+import { switchLanguage, getCurrentLanguage } from '../../utils/autoTranslate';
+import { Check, ChevronDown } from 'lucide-react';
 
 interface LanguageSwitcherProps {
   className?: string;
@@ -14,10 +15,24 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
 }) => {
   const { i18n } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
+  const [activeLang, setActiveLang] = useState<SupportedLanguage>(() => getCurrentLanguage());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const currentLang = (i18n.language?.substring(0, 2) || 'ar') as SupportedLanguage;
-  const currentLangObj = SUPPORTED_LANGUAGES.find(l => l.code === currentLang) || SUPPORTED_LANGUAGES[0];
+  useEffect(() => {
+    const handleLangChanged = (e: Event) => {
+      const customEvent = e as CustomEvent<{ language: SupportedLanguage }>;
+      if (customEvent.detail?.language) {
+        setActiveLang(customEvent.detail.language);
+      }
+    };
+
+    window.addEventListener('allio_language_changed', handleLangChanged);
+    return () => {
+      window.removeEventListener('allio_language_changed', handleLangChanged);
+    };
+  }, []);
+
+  const currentLangObj = SUPPORTED_LANGUAGES.find(l => l.code === activeLang) || SUPPORTED_LANGUAGES[0];
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -35,6 +50,8 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
   }, [isOpen]);
 
   const handleSelectLanguage = (langCode: SupportedLanguage) => {
+    setActiveLang(langCode);
+    switchLanguage(langCode);
     i18n.changeLanguage(langCode);
     setIsOpen(false);
   };
@@ -64,10 +81,10 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
           role="listbox"
         >
           <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-slate-100">
-            {currentLang === 'ar' ? 'اختر اللغة' : 'Select Language'}
+            {activeLang === 'ar' ? 'اختر اللغة' : 'Select Language'}
           </div>
           {SUPPORTED_LANGUAGES.map((lang) => {
-            const isSelected = lang.code === currentLang;
+            const isSelected = lang.code === activeLang;
             return (
               <button
                 key={lang.code}
