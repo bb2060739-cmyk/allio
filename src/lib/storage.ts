@@ -1,4 +1,4 @@
-import { Product, Order, OrderStatus, DashboardStats, Store, LandingPageDesignConfig } from '../types';
+import { Product, Order, OrderStatus, DashboardStats, Store, LandingPageDesignConfig, LocalizedString } from '../types';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { 
   collection, 
@@ -14,6 +14,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { getFromCache, setInCache, invalidateCache, DEFAULT_CACHE_TTL } from './cache';
+import { getLocalizedText } from '../utils/i18n';
 
 const PRODUCTS_KEY = 'allio_products';
 const ORDERS_KEY = 'allio_orders';
@@ -33,20 +34,45 @@ export const DEFAULT_STORE: Store = {
     logoType: 'text',
     logoText: 'Allio',
     logoImageUrl: '',
-    announcementText: 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام'
+    announcementText: 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام',
+    heroBadge: 'منصة الدفع عند الاستلام في المغرب',
+    heroTitle: 'منتجات مختارة بعناية، توصيل مجاني إلى باب منزلك',
+    heroSubtitle: 'لا داعي للدفع بالبطاقة البنكية مسبقاً. اطلب الآن، تفقد طلبيتك وافحصها مع الموزع، ثم ادفع نقداً بكل راحة وأمان.',
+    pillar1Title: 'توصيل مجاني 0 درهم',
+    pillar1Desc: 'شحن سريع لجميع مدن وقرى المغرب مجاناً',
+    pillar2Title: 'الدفع بعد المعاينة',
+    pillar2Desc: 'تفقد طلبيتك وتأكد منها قبل أن تدفع أي درهم للموزع',
+    pillar3Title: 'ضمان الرضا 14 يوماً',
+    pillar3Desc: 'إمكانية الاستبدال أو الاسترجاع بكل سهولة ومرونة',
+    catalogTitle: 'أفضل العروض الحالية في المغرب',
+    catalogSubtitle: 'منتجات أصلية مع توصيل مجاني وضمان الدفع بعد المعاينة عند باب منزلك',
+    buyButtonText: 'طلب الآن عبر الدفع عند الاستلام',
+    buyButtonColor: '#059669',
+    buyButtonTextColor: '#ffffff',
+    footerText: 'منصة التجارة الإلكترونية الموثوقة بالمغرب. نوفر تجربة تسوق آمنة وسهلة مع الدفع عند الاستلام.',
+    footerCopyright: 'جميع الحقوق محفوظة'
   },
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 };
 
-export const getDefaultDesignConfig = (productName?: string, fullDesc?: string): LandingPageDesignConfig => ({
+export const getDefaultDesignConfig = (productName?: LocalizedString, fullDesc?: LocalizedString): LandingPageDesignConfig => ({
+  headerCtaText: 'اطلب الآن',
+  headerCtaColor: '#059669',
   hero: {
     enabled: true,
     badgeText: 'عرض حصري بالمغرب 🔥 توصيل سريع والدفع عند الاستلام',
     headline: productName || 'منتج أصلي عالي الجودة متوفر الآن',
     subheadline: fullDesc || 'تخفيض استثنائي لمدة محدودة مع ضمان الجودة والتوصيل لكافة المدن المغربية.',
     ctaText: 'اطلب الآن - الدفع عند الاستلام 🚚',
+    ctaColor: '#059669',
+    ctaTextColor: '#ffffff',
     heroImageUrl: ''
+  },
+  scarcity: {
+    enabled: true,
+    stockText: 'طلب مرتفع اليوم بالمغرب: بقي فقط {stock} قطع بالمستودع',
+    viewersText: '{count} زائر يتصفحون هذا العرض حالياً'
   },
   features: {
     enabled: true,
@@ -60,6 +86,8 @@ export const getDefaultDesignConfig = (productName?: string, fullDesc?: string):
   testimonials: {
     enabled: true,
     title: 'آراء وتقييمات زبنائنا في المغرب',
+    verifiedBadgeText: 'مشتري مؤكد ✓',
+    ratingNoteText: '(تقييمات موثقة من زبائن حقيقيين)',
     items: [
       { id: 't-1', name: 'أمين البرنوصي', city: 'الدار البيضاء', rating: 5, comment: 'الصراحة جودة ممتازة والتوصيل كان في 24 ساعة. شكراً ليكم!' },
       { id: 't-2', name: 'سناء بن جلون', city: 'الرباط', rating: 5, comment: 'منتج واعر بزاف مطابق تماماً للوصف. تعامل راقي وموزع مهذب.' },
@@ -70,8 +98,41 @@ export const getDefaultDesignConfig = (productName?: string, fullDesc?: string):
     enabled: true,
     title: 'ضمان الرضا والجودة في متجرنا',
     description: 'نوفر لكم إمكانية المعاينة قبل الدفع، مع ضمان استبدال أو استرجاع مجاني في حالة أي عيب مصنعي.',
-    badgeText: 'ضمان ذهبي 100%'
-  }
+    badgeText: 'ضمان ذهبي 100%',
+    bgColor: '',
+    textColor: ''
+  },
+  reassurances: {
+    enabled: true,
+    items: [
+      'الدفع عند الاستلام نقداً بعد فحص السلعة',
+      'شحن سريع لجميع مدن المغرب خلال 24 إلى 48 ساعة',
+      'ضمان الرضا أو الاسترجاع والاستبدال خلال 14 يوماً'
+    ]
+  },
+  orderForm: {
+    enabled: true,
+    title: 'استمارة الطلب السريع والدفع عند الاستلام',
+    subtitle: 'أدخل معلوماتك أدناه وسنتصل بك هاتفياً لتأكيد إرسال الطلبية إلى باب منزلك مجاناً',
+    submitButtonText: 'اضغط هنا للطلب الآن',
+    submitButtonSubtext: 'الدفع عند الاستلام بعد معاينة المنتج 📦 والتوصيل بالمجان',
+    submitButtonColor: '#059669',
+    submitButtonTextColor: '#ffffff',
+    freeShippingText: 'التوصيل مجاني 100% إلى جميع المدن المغربية المسجلة',
+    callConfirmationText: 'سنتصل بك لتأكيد الطلب',
+    trustBadge1Title: 'توصيل سريع',
+    trustBadge1Sub: '24h إلى 48h',
+    trustBadge2Title: 'الدفع عند الاستلام',
+    trustBadge2Sub: 'تفقد سلعتك أولاً',
+    trustBadge3Title: 'ضمان الاستبدال',
+    trustBadge3Sub: '14 يوماً مجاناً'
+  },
+  footer: {
+    enabled: true,
+    text: 'متجر مغربي موثوق يوفر تجربة تسوق مريحة وسريعة.',
+    copyrightText: 'جميع الحقوق محفوظة'
+  },
+  stickyMobileCtaText: 'اطلب الآن - الدفع عند الاستلام'
 });
 
 export const safeLocalStorage = {
@@ -325,9 +386,10 @@ export const fetchMoreProducts = async (currentCount: number, batchSize: number 
   }
 };
 
-export const saveProduct = async (productData: Partial<Product> & { name: string; price: number }): Promise<Product> => {
+export const saveProduct = async (productData: Partial<Product> & { name: LocalizedString; price: number }): Promise<Product> => {
   const products = getProducts();
-  const slug = productData.slug || productData.name.toLowerCase().trim()
+  const nameStr = getLocalizedText(productData.name, 'en') || getLocalizedText(productData.name, 'ar') || 'product';
+  const slug = productData.slug || nameStr.toLowerCase().trim()
     .replace(/[^\w\u0621-\u064A\s-]/g, '')
     .replace(/\s+/g, '-');
 

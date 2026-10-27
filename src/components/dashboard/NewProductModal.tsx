@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Store } from '../../types';
-import { X, Plus, Trash2, Sparkles, Tag, Shield, Globe, Store as StoreIcon, Upload, AlertCircle, Loader2 } from 'lucide-react';
+import { Product, Store, LocalizedString, SupportedLanguage } from '../../types';
+import { SUPPORTED_LANGUAGES } from '../../i18n';
+import { LocalizedInput, LocalizedTextarea } from '../admin/LocalizedFields';
+import { X, Plus, Trash2, Sparkles, Tag, Shield, Globe, Store as StoreIcon, Upload, AlertCircle, Loader2, Languages } from 'lucide-react';
 import { validateImageFile, processAndCompressImage, MAX_IMAGE_SIZE_MB } from '../../lib/imageOptimization';
 
 interface NewProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (product: Partial<Product> & { name: string; price: number }) => void | Promise<void>;
+  onSave: (product: Partial<Product> & { name: LocalizedString; price: number }) => void | Promise<void>;
   editingProduct?: Product | null;
   stores?: Store[];
 }
@@ -19,17 +21,20 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
   stores = []
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeLangTab, setActiveLangTab] = useState<SupportedLanguage>('ar');
   const [storeId, setStoreId] = useState<string>('store-default');
-  const [name, setName] = useState('');
+  
+  // Multilingual states stored as Record<SupportedLanguage, string>
+  const [name, setName] = useState<Record<SupportedLanguage, string>>({ ar: '', en: '', fr: '', es: '' });
   const [slug, setSlug] = useState('');
   const [price, setPrice] = useState<number | ''>(299);
   const [originalPrice, setOriginalPrice] = useState<number | ''>(499);
-  const [shortDescription, setShortDescription] = useState('');
-  const [fullDescription, setFullDescription] = useState('');
+  const [shortDescription, setShortDescription] = useState<Record<SupportedLanguage, string>>({ ar: '', en: '', fr: '', es: '' });
+  const [fullDescription, setFullDescription] = useState<Record<SupportedLanguage, string>>({ ar: '', en: '', fr: '', es: '' });
   const [features, setFeatures] = useState<string[]>(['']);
   const [imageUrl, setImageUrl] = useState('');
   const [images, setImages] = useState<string[]>([]);
-  const [badge, setBadge] = useState('عرض خاص بالمغرب 🔥');
+  const [badge, setBadge] = useState<Record<SupportedLanguage, string>>({ ar: 'عرض خاص بالمغرب 🔥', en: 'Special Offer 🔥', fr: 'Offre Spéciale 🔥', es: 'Oferta Especial 🔥' });
   const [stockCount, setStockCount] = useState<number>(15);
   const [fbPixelId, setFbPixelId] = useState('');
   const [tiktokPixelId, setTiktokPixelId] = useState('');
@@ -37,30 +42,56 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
 
+  const normalizeToMap = (val: LocalizedString | undefined, defaultAr = ''): Record<SupportedLanguage, string> => {
+    if (!val) return { ar: defaultAr, en: '', fr: '', es: '' };
+    if (typeof val === 'string') return { ar: val, en: '', fr: '', es: '' };
+    return {
+      ar: val.ar || defaultAr,
+      en: val.en || '',
+      fr: val.fr || '',
+      es: val.es || '',
+    };
+  };
+
   useEffect(() => {
     if (editingProduct) {
       setStoreId(editingProduct.storeId || stores[0]?.id || 'store-default');
-      setName(editingProduct.name);
+      setName(normalizeToMap(editingProduct.name));
       setSlug(editingProduct.slug);
       setPrice(editingProduct.price);
       setOriginalPrice(editingProduct.originalPrice || '');
-      setShortDescription(editingProduct.shortDescription || '');
-      setFullDescription(editingProduct.fullDescription || '');
-      setFeatures(editingProduct.features.length > 0 ? editingProduct.features : ['']);
+      setShortDescription(normalizeToMap(editingProduct.shortDescription));
+      setFullDescription(normalizeToMap(editingProduct.fullDescription));
+      setFeatures(editingProduct.features.length > 0 ? editingProduct.features.map(f => typeof f === 'string' ? f : (f.ar || Object.values(f)[0] || '')) : ['']);
       setImages(editingProduct.images || []);
-      setBadge(editingProduct.badge || '');
+      setBadge(normalizeToMap(editingProduct.badge, 'عرض خاص بالمغرب 🔥'));
       setStockCount(editingProduct.stockCount || 10);
       setFbPixelId(editingProduct.fbPixelId || '');
       setTiktokPixelId(editingProduct.tiktokPixelId || '');
       setFreeShipping(editingProduct.freeShipping !== false);
     } else {
       // Defaults for a new Moroccan COD landing page
-      setName('');
+      setName({
+        ar: '',
+        en: '',
+        fr: '',
+        es: '',
+      });
       setSlug('');
       setPrice(299);
       setOriginalPrice(499);
-      setShortDescription('منتج عالي الجودة متوفر حصرياً مع خدمة الدفع عند الاستلام والتوصيل بالمجان.');
-      setFullDescription('مواصفات وتفاصيل المنتج الشاملة لضمان أفضل تجربة استخدام.');
+      setShortDescription({
+        ar: 'منتج عالي الجودة متوفر حصرياً مع خدمة الدفع عند الاستلام والتوصيل بالمجان.',
+        en: 'High quality product available exclusively with cash on delivery and free shipping.',
+        fr: 'Produit de haute qualité disponible exclusivement avec paiement à la livraison et livraison gratuite.',
+        es: 'Producto de alta calidad disponible exclusivamente con pago contra entrega y envío gratuito.'
+      });
+      setFullDescription({
+        ar: 'مواصفات وتفاصيل المنتج الشاملة لضمان أفضل تجربة استخدام.',
+        en: 'Comprehensive product specifications and details to ensure the best experience.',
+        fr: 'Spécifications complètes du produit pour garantir la meilleure expérience.',
+        es: 'Especificaciones completas del producto para garantizar la mejor experiencia.'
+      });
       setFeatures([
         'جودة ممتازة معتمدة ومضمونة 100%',
         'توصيل سريع إلى باب المنزل في جميع مدن المغرب',
@@ -70,7 +101,12 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
       setImages([
         'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
       ]);
-      setBadge('توصيل مجاني 🇲🇦');
+      setBadge({
+        ar: 'توصيل مجاني 🇲🇦',
+        en: 'Free Shipping 🇲🇦',
+        fr: 'Livraison Gratuite 🇲🇦',
+        es: 'Envío Gratis 🇲🇦'
+      });
       setStockCount(12);
       setFbPixelId('');
       setTiktokPixelId('');
@@ -80,16 +116,19 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle auto-generating clean slug from product name
-  const handleNameChange = (val: string) => {
-    setName(val);
-    if (!editingProduct) {
-      const generated = val
-        .trim()
-        .toLowerCase()
-        .replace(/[^\w\u0621-\u064A\s-]/g, '')
-        .replace(/\s+/g, '-');
-      setSlug(generated);
+  // Auto-generate clean slug from product name if slug is empty or user is adding new
+  const handleNameChange = (valMap: Record<SupportedLanguage, string>) => {
+    setName(valMap);
+    if (!editingProduct && !slug) {
+      const activeText = valMap.en || valMap.fr || valMap.ar || '';
+      if (activeText) {
+        const generated = activeText
+          .trim()
+          .toLowerCase()
+          .replace(/[^\w\u0621-\u064A\s-]/g, '')
+          .replace(/\s+/g, '-');
+        setSlug(generated);
+      }
     }
   };
 
@@ -134,7 +173,6 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
   const handleAddImage = () => {
     if (imageUrl.trim()) {
       setImageUploadError(null);
-      // Check if it's a huge base64 data url > 1MB
       if (imageUrl.startsWith('data:image') && imageUrl.length > 1.37 * 1024 * 1024) {
         setImageUploadError('بيانات الصورة المدخلة تتجاوز 1 ميغابايت. يرجى اختيار صورة أصغر حجماً.');
         return;
@@ -150,22 +188,23 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !price) return;
+    const primaryName = name.ar || name.en || name.fr || name.es || '';
+    if (!primaryName.trim() || !price) return;
 
     await onSave({
       id: editingProduct?.id,
       storeId,
-      name: name.trim(),
+      name, // Saved as nested { ar, en, fr, es } within same doc
       slug: slug.trim() || 'product-' + Date.now(),
       price: Number(price),
       originalPrice: originalPrice ? Number(originalPrice) : undefined,
-      shortDescription: shortDescription.trim(),
-      fullDescription: fullDescription.trim(),
+      shortDescription,
+      fullDescription,
       features: features.filter(f => f.trim().length > 0),
       images: images.length > 0 ? images : [
         'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
       ],
-      badge: badge.trim(),
+      badge,
       stockCount: Number(stockCount) || 10,
       fbPixelId: fbPixelId.trim(),
       tiktokPixelId: tiktokPixelId.trim(),
@@ -179,21 +218,54 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200 text-slate-800">
         {/* Modal Header */}
-        <div className="p-6 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white z-10">
+        <div className="p-6 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white z-20">
           <div>
-            <h2 className="text-xl font-black text-slate-900">
-              {editingProduct ? 'تعديل صفحة المنتج' : 'إنشاء صفحة منتج جديدة (Landing Page)'}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-black text-slate-900">
+                {editingProduct ? 'تعديل صفحة المنتج' : 'إنشاء صفحة منتج جديدة (Landing Page)'}
+              </h2>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                i18n مفعّل
+              </span>
+            </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              أنشئ صفحة هبوط سريعة جداً مع بيكسل فيسبوك وتيك توك واستمارة COD مخصصة للمغرب
+              صفحة هبوط مع دعم اللغات المتعددة (عربي، إنجليزي، فرنسي، إسباني) داخل نفس وثيقة Firestore
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Global Language Switcher Bar */}
+        <div className="bg-slate-50 px-6 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+            <Languages className="w-4 h-4 text-emerald-600" />
+            <span>تبويب اللغة السريع للحقول:</span>
+          </div>
+          <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs gap-1">
+            {SUPPORTED_LANGUAGES.map((lang) => {
+              const isSelected = activeLangTab === lang.code;
+              return (
+                <button
+                  key={lang.code}
+                  type="button"
+                  onClick={() => setActiveLangTab(lang.code)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isSelected
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>{lang.flag}</span>
+                  <span>{lang.nativeName}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Modal Form */}
@@ -230,19 +302,17 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                اسم المنتج التجاري <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="مثال: ساعة ذكية Ultra Max Titanium الأصلية"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-sm outline-none"
-              />
-            </div>
+            {/* Localized Name */}
+            <LocalizedInput
+              label="اسم المنتج التجاري"
+              required
+              value={name}
+              onChange={handleNameChange}
+              placeholder="مثال: ساعة ذكية Ultra Max Titanium الأصلية"
+              activeLanguage={activeLangTab}
+              onLanguageChange={setActiveLangTab}
+              helpText="أدخل اسم المنتج باللغات المرغوبة. يتم عرض اللغة المناسبة للمشتري تلقائياً."
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -300,53 +370,54 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
                     className="flex-1 bg-transparent border-0 outline-none font-mono text-slate-800 font-semibold"
                   />
                 </div>
-                <span className="text-[10px] text-slate-400 mt-0.5 block">
-                  يمكنك تخصيص الرابط مثل: watch-1 أو argan-bio
-                </span>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  شارات الثقة (Badge):
-                </label>
-                <input
-                  type="text"
-                  value={badge}
-                  onChange={(e) => setBadge(e.target.value)}
-                  placeholder="مثال: الأكثر مبيعاً بالمغرب 🔥"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                الوصف التسويقي المختصر
-              </label>
-              <textarea
-                rows={2}
-                value={shortDescription}
-                onChange={(e) => setShortDescription(e.target.value)}
-                placeholder="وصف مشوق وسريع يظهر في أعلى صفحة الهبوط..."
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none resize-none"
+              {/* Localized Badge */}
+              <LocalizedInput
+                label="شارة العرض (Badge)"
+                value={badge}
+                onChange={setBadge}
+                placeholder="عرض خاص بالمغرب 🔥"
+                activeLanguage={activeLangTab}
+                onLanguageChange={setActiveLangTab}
               />
             </div>
+
+            {/* Localized Short Description */}
+            <LocalizedTextarea
+              label="الوصف التسويقي المختصر"
+              rows={2}
+              value={shortDescription}
+              onChange={setShortDescription}
+              placeholder="وصف مشوق وسريع يظهر في أعلى صفحة الهبوط..."
+              activeLanguage={activeLangTab}
+              onLanguageChange={setActiveLangTab}
+            />
+
+            {/* Localized Full Description */}
+            <LocalizedTextarea
+              label="الوصف الكامل والمواصفات"
+              rows={3}
+              value={fullDescription}
+              onChange={setFullDescription}
+              placeholder="تفاصيل العرض، طريقة الاستخدام، والمميزات..."
+              activeLanguage={activeLangTab}
+              onLanguageChange={setActiveLangTab}
+            />
           </div>
 
           {/* Section: Features list */}
-          <div className="space-y-3 pt-4 border-t border-slate-200">
+          <div className="space-y-3 pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>2. مميزات وفوائد المنتج (Bullet Points)</span>
+              <label className="block text-xs font-bold text-slate-700">
+                مميزات المنتج (نقاط إبراز القيمة)
               </label>
               <button
                 type="button"
                 onClick={handleAddFeature}
-                className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1"
+                className="text-xs text-emerald-600 font-bold flex items-center gap-1 hover:underline cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>إضافة ميزة</span>
+                <Plus className="w-3.5 h-3.5" /> إضافة ميزة
               </button>
             </div>
 
@@ -358,13 +429,13 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
                     value={feat}
                     onChange={(e) => handleFeatureChange(idx, e.target.value)}
                     placeholder={`ميزة رقم ${idx + 1}...`}
-                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:border-emerald-500"
+                    className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-emerald-500"
                   />
                   {features.length > 1 && (
                     <button
                       type="button"
                       onClick={() => handleRemoveFeature(idx)}
-                      className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                      className="p-2 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -374,98 +445,84 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
             </div>
           </div>
 
-          {/* Section: Product Images */}
-          <div className="space-y-3 pt-4 border-t border-slate-200">
+          {/* Section: Images & Media */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-bold text-slate-900">
-                3. صور المنتج (رفع صور أو روابط)
+              <label className="block text-xs font-bold text-slate-700">
+                صور المنتج (مع حد أقصى 1 ميغابايت لكل صورة لحماية الحصة المجانية)
               </label>
-              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                أقصى حجم للملف: 1 ميغابايت (1MB Max)
+              <span className="text-[11px] text-slate-400">
+                {images.length} صورة مضافة
               </span>
             </div>
 
-            {/* Error banner when image exceeds 1MB */}
             {imageUploadError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center justify-between gap-2 font-semibold animate-in fade-in">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>{imageUploadError}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setImageUploadError(null)}
-                  className="text-rose-700 hover:text-rose-900 p-1"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <span>{imageUploadError}</span>
               </div>
             )}
 
-            {/* Upload File and URL Input Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-              <div className="sm:col-span-8 flex gap-2">
+            {/* Direct Upload button */}
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessingImage}
+                className="w-full sm:w-auto px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isProcessingImage ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                    <span>جاري ضغط وضبط حجم الصورة...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 text-emerald-600" />
+                    <span>رفع صورة من الجهاز (أقصى حد 1MB)</span>
+                  </>
+                )}
+              </button>
+
+              <span className="text-xs text-slate-400">أو أدخل رابط ويب:</span>
+
+              <div className="flex-1 flex items-center gap-1.5 w-full">
                 <input
                   type="url"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="أدخل رابط صورة المنتج (URL)..."
-                  className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs outline-none"
+                  placeholder="https://example.com/image.jpg"
+                  className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-emerald-500"
                 />
                 <button
                   type="button"
                   onClick={handleAddImage}
-                  className="px-3 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 shrink-0 cursor-pointer"
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
                 >
-                  إضافة رابط
-                </button>
-              </div>
-
-              <div className="sm:col-span-4">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  disabled={isProcessingImage}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {isProcessingImage ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>جاري الفحص...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>رفع صورة (≤ 1MB)</span>
-                    </>
-                  )}
+                  إضافة
                 </button>
               </div>
             </div>
 
-            <p className="text-[11px] text-slate-500">
-              ⚡ تحسين تلقائي: يتم التحقق بدقة من عدم تجاوز أي صورة 1MB قبل حفظها، لحماية حصة الاستخدام المجاني في Firebase وضمان سرعة التصفح.
-            </p>
-
-            {/* Images preview strip */}
+            {/* Image Preview Gallery */}
             {images.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {images.map((img, i) => (
-                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center p-1 group">
-                    <img src={img} alt="preview" className="w-full h-full object-contain" />
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 pt-2">
+                {images.map((img, idx) => (
+                  <div key={idx} className="relative group rounded-xl border border-slate-200 overflow-hidden bg-slate-50 aspect-square flex items-center justify-center p-1">
+                    <img src={img} alt="" className="w-full h-full object-contain" />
                     <button
                       type="button"
-                      onClick={() => handleRemoveImage(i)}
-                      className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      onClick={() => handleRemoveImage(idx)}
+                      className="absolute top-1 end-1 p-1 bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-md cursor-pointer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}
@@ -473,82 +530,57 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
             )}
           </div>
 
-          {/* Section: Tracking Pixels (Crucial for Moroccan COD) */}
-          <div className="space-y-4 pt-4 border-t border-slate-200 bg-slate-50 -mx-6 px-6 py-5 rounded-b-3xl">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Globe className="w-4 h-4 text-emerald-600" />
-                <span>4. تتبع الحملات الإعلانية (Tracking Pixels)</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                يتم تفعيل البيكسل تلقائياً في صفحة المنتج وصفحة الشكر لإرسال أحداث ViewContent و InitiateCheckout و Purchase
-              </p>
-            </div>
+          {/* Section: Pixels & Tracking */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-emerald-600" />
+              <span>2. تتبع الحملات الإعلانية (Pixels)</span>
+            </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Facebook Pixel */}
-              <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-1.5 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800">
-                    Facebook Pixel ID:
-                  </label>
-                  <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded">
-                    Meta Ads
-                  </span>
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Facebook Pixel ID
+                </label>
                 <input
                   type="text"
-                  dir="ltr"
                   value={fbPixelId}
                   onChange={(e) => setFbPixelId(e.target.value)}
-                  placeholder="مثال: 109823471629831"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono outline-none focus:border-blue-500"
+                  placeholder="مثال: 123456789012345"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none font-mono focus:border-emerald-500"
                 />
-                <span className="text-[10px] text-slate-400 block">
-                  ستُرسل أحداث الشراء مع عملة MAD والقيمة بالدرهم
-                </span>
               </div>
 
-              {/* TikTok Pixel */}
-              <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-1.5 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800">
-                    TikTok Pixel ID:
-                  </label>
-                  <span className="text-[10px] bg-black text-white font-bold px-1.5 py-0.5 rounded">
-                    TikTok Ads
-                  </span>
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  TikTok Pixel ID
+                </label>
                 <input
                   type="text"
-                  dir="ltr"
                   value={tiktokPixelId}
                   onChange={(e) => setTiktokPixelId(e.target.value)}
-                  placeholder="مثال: C7HG98LKQ0192"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono outline-none focus:border-slate-800"
+                  placeholder="مثال: C6ABCD1234EFG567"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none font-mono focus:border-emerald-500"
                 />
-                <span className="text-[10px] text-slate-400 block">
-                  تتبع أوتوماتيكي لحدث CompletePayment بعد التأكيد
-                </span>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3">
+          {/* Modal Actions */}
+          <div className="p-6 border-t border-slate-200 flex items-center justify-end gap-3 sticky bottom-0 bg-white">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors"
+              className="px-5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
+              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{editingProduct ? 'حفظ التعديلات' : 'إنشاء ونشر صفحة الهبوط فوراً'}</span>
+              <span>{editingProduct ? 'حفظ التعديلات' : 'إنشاء وحفظ المنتج'}</span>
             </button>
           </div>
         </form>

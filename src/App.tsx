@@ -7,7 +7,7 @@ import {
   useNavigate, 
   Navigate 
 } from 'react-router-dom';
-import { Product, Order, Store } from './types';
+import { Product, Order, Store, LocalizedString } from './types';
 import { getProducts, getOrders, getDashboardStats, saveProduct, initFirestoreRealtimeSync, getStores, fetchProductBySlug } from './lib/storage';
 import { isAuthenticated, getAdminUser, logoutAdmin } from './lib/auth';
 import { AdminLogin } from './components/admin/AdminLogin';
@@ -153,7 +153,7 @@ function AppContent() {
  */
 function StorefrontRoute({ 
   products, 
-  stores: _stores, 
+  stores, 
   isAuth 
 }: { 
   products: Product[]; 
@@ -161,6 +161,7 @@ function StorefrontRoute({
   isAuth: boolean; 
 }) {
   const navigate = useNavigate();
+  const activeStore = stores.find(s => s.isDefault) || stores[0];
 
   // If normal customer (unauthenticated), render ONLY clean storefront with no admin banner
   if (!isAuth) {
@@ -168,6 +169,7 @@ function StorefrontRoute({
       <div className="min-h-screen bg-slate-50">
         <StorefrontCatalog
           products={products}
+          store={activeStore}
           onSelectProduct={(prod) => navigate(`/${prod.slug}`)}
         />
       </div>
@@ -194,6 +196,7 @@ function StorefrontRoute({
 
       <StorefrontCatalog
         products={products}
+        store={activeStore}
         onSelectProduct={(prod) => navigate(`/${prod.slug}`)}
       />
     </div>
@@ -439,7 +442,7 @@ function AdminRoute({
     );
   }
 
-  const handleSaveProduct = async (productData: Partial<Product> & { name: string; price: number }) => {
+  const handleSaveProduct = async (productData: Partial<Product> & { name: LocalizedString; price: number }) => {
     await saveProduct(productData);
     onDataChange();
     setEditingProduct(null);

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { DashboardStats, Order, Product } from '../../types';
+import { getLocalizedText } from '../../utils/i18n';
 import { 
   TrendingUp, 
   ShoppingBag, 
@@ -829,7 +830,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 >
                   <div className="space-y-0.5 min-w-0 pr-2">
                     <div className="font-bold text-xs text-slate-900 group-hover:text-emerald-700 truncate">
-                      {p.name}
+                      {getLocalizedText(p.name)}
                     </div>
                     <div className="text-[11px] text-slate-400">
                       {p.price} DH · {p.salesCount || 0} مبيعة

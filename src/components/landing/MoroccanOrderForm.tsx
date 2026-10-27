@@ -1,8 +1,10 @@
 import React, { useState, useId } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Product, Order } from '../../types';
 import { MOROCCAN_CITIES } from '../../data/moroccanCities';
-import { createOrder } from '../../lib/storage';
+import { createOrder, getStoreById, getDefaultDesignConfig } from '../../lib/storage';
 import { trackPixelEvent } from '../../lib/pixelTracker';
+import { getLocalizedText } from '../../utils/i18n';
 import { Check, ShieldCheck, Truck, Sparkles, AlertCircle, ShoppingBag, PhoneCall } from 'lucide-react';
 
 interface MoroccanOrderFormProps {
@@ -14,7 +16,20 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
   product,
   onOrderSuccess
 }) => {
+  const { t, i18n } = useTranslation();
+  const currentLang = i18n.language || 'ar';
+  const isRTL = currentLang === 'ar';
+
   const formId = useId();
+  const store = getStoreById(product.storeId);
+  const design = product.designConfig || getDefaultDesignConfig(
+    getLocalizedText(product.name, currentLang),
+    getLocalizedText(product.fullDescription, currentLang)
+  );
+  const orderFormConfig = design.orderForm;
+  const primaryColor = orderFormConfig?.submitButtonColor || store.design?.primaryColor || '#059669';
+  const secondaryColor = store.design?.secondaryColor || '#0f172a';
+
   const [customerName, setCustomerName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [city, setCity] = useState('');
@@ -64,7 +79,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     if (!hasStartedForm) {
       setHasStartedForm(true);
       trackPixelEvent('InitiateCheckout', product.fbPixelId, product.tiktokPixelId, {
-        content_name: product.name,
+        content_name: getLocalizedText(product.name, currentLang),
         content_ids: [product.id],
         value: totalPrice,
         currency: 'MAD'
@@ -86,44 +101,43 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
       address?: string;
     } = {};
 
-    // 1. Full Name (الاسم الكامل)
+    // 1. Full Name
     if (!values.customerName.trim()) {
-      errs.customerName = 'المرجو إدخال الاسم الكامل (هذا الحقل إجباري)';
+      errs.customerName = t('order_form.validation_name_required');
     } else if (values.customerName.trim().length < 3) {
-      errs.customerName = 'المرجو إدخال اسم كامل صحيح (3 أحرف على الأقل)';
+      errs.customerName = t('order_form.validation_name_short');
     }
 
-    // 2. Phone Number (رقم الهاتف)
+    // 2. Phone Number
     const cleaned = values.phoneNumber.replace(/\s+/g, '').replace(/-/g, '');
     if (!values.phoneNumber.trim()) {
-      errs.phoneNumber = 'المرجو إدخال رقم الهاتف (هذا الحقل إجباري)';
+      errs.phoneNumber = t('order_form.validation_phone_required');
     } else if (!/^(06|07|05)\d{8}$/.test(cleaned)) {
-      errs.phoneNumber = 'رقم غير صحيح. يجب أن يتكون من 10 أرقام ويبدأ بـ 06 أو 07 أو 05 (مثال: 0612345678)';
+      errs.phoneNumber = t('order_form.validation_phone_invalid');
     }
 
-    // 3. City (المدينة)
+    // 3. City
     if (!values.city || !values.city.trim()) {
-      errs.city = 'المرجو اختيار المدينة (هذا الحقل إجباري)';
+      errs.city = t('order_form.validation_city_required');
     }
 
-    // 4. Address (العنوان)
+    // 4. Address
     if (!values.address.trim()) {
-      errs.address = 'المرجو إدخال العنوان السكني أو الحي (هذا الحقل إجباري)';
+      errs.address = t('order_form.validation_address_required');
     } else if (values.address.trim().length < 4) {
-      errs.address = 'المرجو إدخال عنوان سكني أو اسم الحي بشكل واضح';
+      errs.address = t('order_form.validation_address_short');
     }
 
     return errs;
   };
 
-  // Field change handlers with live error clearing
   const handleNameChange = (val: string) => {
     setCustomerName(val);
     if (touched.customerName) {
       if (!val.trim()) {
-        setErrors(prev => ({ ...prev, customerName: 'المرجو إدخال الاسم الكامل (هذا الحقل إجباري)' }));
+        setErrors(prev => ({ ...prev, customerName: t('order_form.validation_name_required') }));
       } else if (val.trim().length < 3) {
-        setErrors(prev => ({ ...prev, customerName: 'المرجو إدخال اسم كامل صحيح (3 أحرف على الأقل)' }));
+        setErrors(prev => ({ ...prev, customerName: t('order_form.validation_name_short') }));
       } else {
         setErrors(prev => ({ ...prev, customerName: undefined }));
       }
@@ -135,9 +149,9 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     if (touched.phoneNumber) {
       const cleaned = val.replace(/\s+/g, '').replace(/-/g, '');
       if (!val.trim()) {
-        setErrors(prev => ({ ...prev, phoneNumber: 'المرجو إدخال رقم الهاتف (هذا الحقل إجباري)' }));
+        setErrors(prev => ({ ...prev, phoneNumber: t('order_form.validation_phone_required') }));
       } else if (!/^(06|07|05)\d{8}$/.test(cleaned)) {
-        setErrors(prev => ({ ...prev, phoneNumber: 'رقم غير صحيح. يجب أن يتكون من 10 أرقام ويبدأ بـ 06 أو 07 أو 05 (مثال: 0612345678)' }));
+        setErrors(prev => ({ ...prev, phoneNumber: t('order_form.validation_phone_invalid') }));
       } else {
         setErrors(prev => ({ ...prev, phoneNumber: undefined }));
       }
@@ -148,7 +162,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     setCity(val);
     if (touched.city) {
       if (!val.trim()) {
-        setErrors(prev => ({ ...prev, city: 'المرجو اختيار المدينة (هذا الحقل إجباري)' }));
+        setErrors(prev => ({ ...prev, city: t('order_form.validation_city_required') }));
       } else {
         setErrors(prev => ({ ...prev, city: undefined }));
       }
@@ -159,9 +173,9 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
     setAddress(val);
     if (touched.address) {
       if (!val.trim()) {
-        setErrors(prev => ({ ...prev, address: 'المرجو إدخال العنوان السكني أو الحي (هذا الحقل إجباري)' }));
+        setErrors(prev => ({ ...prev, address: t('order_form.validation_address_required') }));
       } else if (val.trim().length < 4) {
-        setErrors(prev => ({ ...prev, address: 'المرجو إدخال عنوان سكني أو اسم الحي بشكل واضح' }));
+        setErrors(prev => ({ ...prev, address: t('order_form.validation_address_short') }));
       } else {
         setErrors(prev => ({ ...prev, address: undefined }));
       }
@@ -177,7 +191,6 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Mark all as touched
     setTouched({
       customerName: true,
       phoneNumber: true,
@@ -194,7 +207,6 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
 
     setErrors(validationErrors);
 
-    // If any validation errors exist, halt and focus the first invalid field
     if (Object.keys(validationErrors).length > 0) {
       if (validationErrors.customerName) {
         document.getElementById(`${formId}-name`)?.focus();
@@ -208,181 +220,196 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
       return;
     }
 
-    // Anti-Spam Rate Limiter: Prevent automated multiple orders within 15 seconds
+    // Anti-Spam Rate Limiter
     const lastOrderTime = sessionStorage.getItem('allio_last_order_ts');
     if (lastOrderTime) {
       const diffSecs = (Date.now() - Number(lastOrderTime)) / 1000;
       if (diffSecs < 15) {
-        setSubmissionError(`تم تسجيل طلبكم بنجاح! يرجى الانتظار ${Math.ceil(15 - diffSecs)} ثانية قبل إرسال طلب جديد لتفادي التكرار وسوء الاستخدام.`);
+        setSubmissionError(currentLang === 'ar' 
+          ? 'تم استلام طلبك السابق بنجاح. يرجى الانتظار بضع لحظات قبل إرسال طلب جديد.'
+          : 'Your previous order was received. Please wait a moment before placing another.');
         return;
       }
     }
 
-    setSubmissionError(null);
     setIsSubmitting(true);
+    setSubmissionError(null);
 
     try {
+      const productNameLocalized = getLocalizedText(product.name, currentLang);
       const newOrder = await createOrder({
         productId: product.id,
-        productName: product.name,
-        customerName: customerName.trim().slice(0, 100),
+        productName: productNameLocalized,
+        customerName: customerName.trim(),
         phoneNumber: cleanPhone,
-        city: city,
-        address: address.trim().slice(0, 300),
-        quantity: Math.min(Math.max(1, quantity), 20),
+        city: city.trim(),
+        address: address.trim(),
+        quantity,
         unitPrice: product.price,
         shippingFee: 0,
-        totalPrice: totalPrice,
+        totalPrice,
         status: 'new',
-        notes: (notes || '').trim().slice(0, 300),
-        fbPixelFired: !!product.fbPixelId,
-        tiktokPixelFired: !!product.tiktokPixelId
+        notes: notes.trim() || undefined
       });
 
-      // Record timestamp to enforce anti-spam cooldown
-      sessionStorage.setItem('allio_last_order_ts', String(Date.now()));
+      sessionStorage.setItem('allio_last_order_ts', Date.now().toString());
 
-      // Track Purchase on Pixels
       trackPixelEvent('Purchase', product.fbPixelId, product.tiktokPixelId, {
-        content_name: product.name,
+        content_name: productNameLocalized,
         content_ids: [product.id],
         value: totalPrice,
         currency: 'MAD',
-        num_items: quantity,
-        order_id: newOrder.orderNumber
+        num_items: quantity
       });
 
       onOrderSuccess(newOrder);
-    } catch (err) {
-      console.error('Order creation error', err);
-      setSubmissionError('حدث خطأ أثناء إرسال الطلب. يرجى المحاولة بعد قليل أو التأكد من اتصال الإنترنت.');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'حدث خطأ أثناء حفظ الطلب.';
+      setSubmissionError(errorMessage);
+    } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Smart Hiding for whole order form
+  if (orderFormConfig?.enabled === false) {
+    return null;
+  }
+
+  const formTitle = getLocalizedText(orderFormConfig?.title, currentLang) || t('order_form.title');
+  const formSubtitle = getLocalizedText(orderFormConfig?.subtitle, currentLang) || t('order_form.subtitle');
+  const callConfirmation = getLocalizedText(orderFormConfig?.callConfirmationText, currentLang) || t('order_form.call_confirmation');
+  const freeShippingNote = getLocalizedText(orderFormConfig?.freeShippingText, currentLang) || t('order_form.free_shipping');
+  const submitButtonText = getLocalizedText(orderFormConfig?.submitButtonText, currentLang) || t('order_form.submit_btn');
+  const submitButtonSubtext = getLocalizedText(orderFormConfig?.submitButtonSubtext, currentLang) || t('order_form.submit_subtext');
+
   return (
-    <div id="order-form-section" className="bg-white rounded-2xl border border-slate-200/80 shadow-xl overflow-hidden scroll-mt-6">
-      {/* Form Header Banner */}
-      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-5 text-center relative overflow-hidden">
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-            <span>عرض حصري بالمغرب لفترة محدودة</span>
-          </div>
-          <h3 className="text-xl md:text-2xl font-black tracking-tight">
-            استمارة الطلب السريع والدفع عند الاستلام
-          </h3>
-          <p className="text-emerald-100 text-xs md:text-sm mt-1 max-w-md mx-auto">
-            أدخل معلوماتك أدناه وسنتصل بك هاتفياً لتأكيد إرسال الطلبية إلى باب منزلك مجاناً
-          </p>
+    <div id="order-form-section" className="bg-white rounded-3xl border-2 border-emerald-500/30 p-5 md:p-8 shadow-xl max-w-xl mx-auto my-8 relative overflow-hidden">
+      {/* Decorative Top Accent */}
+      <div 
+        className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600"
+        style={{ background: `linear-gradient(90deg, ${primaryColor}, ${secondaryColor})` }}
+      />
+
+      <div className="text-center space-y-1 mb-6">
+        <div 
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-2 border"
+          style={{ 
+            backgroundColor: `${primaryColor}12`, 
+            color: primaryColor,
+            borderColor: `${primaryColor}30`
+          }}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>{callConfirmation}</span>
         </div>
+        <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+          {formTitle}
+        </h2>
+        {formSubtitle && (
+          <p className="text-sm text-slate-600">
+            {formSubtitle}
+          </p>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} noValidate className="p-5 md:p-8 space-y-6 text-slate-800">
-        {/* Anti-spam / rate-limiting error alert */}
-        {submissionError && (
-          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 text-amber-900 text-xs flex items-center justify-between gap-2.5 shadow-xs animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-              <span className="font-semibold leading-relaxed">{submissionError}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSubmissionError(null)}
-              className="text-amber-700 hover:text-amber-900 p-1 text-xs font-bold"
-            >
-              ✕
-            </button>
-          </div>
-        )}
+      {submissionError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-700 text-sm">
+          <AlertCircle className="w-5 h-5 shrink-0 text-red-600" />
+          <p>{submissionError}</p>
+        </div>
+      )}
 
-        {/* Global validation alert if form has validation errors */}
-        {Object.values(errors).some(Boolean) && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 text-red-800 text-xs flex items-center gap-2.5 shadow-xs">
-            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-            <span className="font-semibold leading-relaxed">
-              يرجى ملء جميع الحقول الإجبارية المشار إليها بعلامة (*) للمتابعة وتأكيد طلبكم.
-            </span>
-          </div>
-        )}
-
-        {/* Quantity / Bundle Selection */}
-        <div className="space-y-3">
-          <label className="block text-sm font-bold text-slate-900">
-            1. اختر العرض المناسب لك:
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Bundle Quantity Selector */}
+        <div>
+          <label className="block text-sm font-semibold text-slate-800 mb-2">
+            {t('order_form.quantity')}:
           </label>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {/* 1 Piece */}
             <button
               type="button"
               onClick={() => setQuantity(1)}
-              className={`p-3.5 rounded-xl border-2 text-right transition-all flex flex-col justify-between ${
+              className={`p-3.5 rounded-xl border-2 text-start transition-all flex flex-col justify-between ${
                 quantity === 1
                   ? 'border-emerald-600 bg-emerald-50/60 shadow-sm'
                   : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-bold text-sm text-slate-900">قطعة واحدة (1)</span>
-                {quantity === 1 && <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs"><Check className="w-3.5 h-3.5" /></span>}
+                <span className="font-bold text-sm text-slate-900">{t('order_form.qty_1')}</span>
+                {quantity === 1 && (
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">
+                    <Check className="w-3.5 h-3.5" />
+                  </span>
+                )}
               </div>
-              <div className="text-lg font-black text-emerald-700">
-                {product.price} <span className="text-xs font-normal">درهم</span>
+              <div className="text-lg font-black text-slate-900">
+                {product.price} <span className="text-xs font-normal">{t('common.currency')}</span>
               </div>
-              <span className="text-[11px] text-slate-500">سعر تجربة ممتاز</span>
+              <span className="text-[11px] text-slate-500 font-medium">{t('order_form.free_shipping')}</span>
             </button>
 
-            {/* 2 Pieces - Best Deal */}
+            {/* 2 Pieces */}
             <button
               type="button"
               onClick={() => setQuantity(2)}
-              className={`p-3.5 rounded-xl border-2 text-right transition-all flex flex-col justify-between relative overflow-hidden ${
+              className={`p-3.5 rounded-xl border-2 text-start transition-all flex flex-col justify-between relative overflow-hidden ${
                 quantity === 2
                   ? 'border-emerald-600 bg-emerald-50/60 shadow-md ring-2 ring-emerald-500/20'
                   : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
               }`}
             >
-              <div className="absolute top-0 left-0 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-br-lg">
-                الأكثر طلباً ⭐
+              <div className="absolute top-0 end-0 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-es-lg">
+                ⭐ {isRTL ? 'الأكثر طلباً' : 'Popular'}
               </div>
               <div className="flex items-center justify-between mb-1">
-                <span className="font-bold text-sm text-slate-900">قطعتان (2)</span>
-                {quantity === 2 && <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs"><Check className="w-3.5 h-3.5" /></span>}
+                <span className="font-bold text-sm text-slate-900">{t('order_form.qty_2')}</span>
+                {quantity === 2 && (
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">
+                    <Check className="w-3.5 h-3.5" />
+                  </span>
+                )}
               </div>
               <div className="text-lg font-black text-emerald-700">
-                {getBundlePrice(2)} <span className="text-xs font-normal">درهم</span>
+                {getBundlePrice(2)} <span className="text-xs font-normal">{t('common.currency')}</span>
               </div>
-              <span className="text-[11px] text-emerald-700 font-medium">وفر 15% + توصيل مجاني</span>
+              <span className="text-[11px] text-emerald-700 font-medium">15% {t('landing.discount_badge', { percent: 15 })}</span>
             </button>
 
-            {/* 3 Pieces - Family Pack */}
+            {/* 3 Pieces */}
             <button
               type="button"
               onClick={() => setQuantity(3)}
-              className={`p-3.5 rounded-xl border-2 text-right transition-all flex flex-col justify-between ${
+              className={`p-3.5 rounded-xl border-2 text-start transition-all flex flex-col justify-between ${
                 quantity === 3
                   ? 'border-emerald-600 bg-emerald-50/60 shadow-sm'
                   : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-bold text-sm text-slate-900">3 قطع (عرض العائلة)</span>
-                {quantity === 3 && <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs"><Check className="w-3.5 h-3.5" /></span>}
+                <span className="font-bold text-sm text-slate-900">{t('order_form.qty_3')}</span>
+                {quantity === 3 && (
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">
+                    <Check className="w-3.5 h-3.5" />
+                  </span>
+                )}
               </div>
               <div className="text-lg font-black text-emerald-700">
-                {getBundlePrice(3)} <span className="text-xs font-normal">درهم</span>
+                {getBundlePrice(3)} <span className="text-xs font-normal">{t('common.currency')}</span>
               </div>
-              <span className="text-[11px] text-emerald-700 font-medium">وفر 25% من الثمن الأصلي</span>
+              <span className="text-[11px] text-emerald-700 font-medium">25% {t('landing.discount_badge', { percent: 25 })}</span>
             </button>
           </div>
         </div>
 
-        {/* Customer Information Form - Strictly Required Fields */}
+        {/* Customer Information Form */}
         <div className="space-y-4 pt-2">
-          {/* Full Name (الاسم الكامل) - Strictly Required */}
+          {/* Full Name */}
           <div>
             <label htmlFor={`${formId}-name`} className="block text-sm font-semibold text-slate-800 mb-1.5">
-              الاسم الكامل <span className="text-red-500 font-bold">*</span>
+              {t('order_form.full_name')} <span className="text-red-500 font-bold">*</span>
             </label>
             <input
               id={`${formId}-name`}
@@ -391,7 +418,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
               onChange={(e) => handleNameChange(e.target.value)}
               onBlur={() => handleBlur('customerName')}
               onFocus={handleFieldFocus}
-              placeholder="مثال: محمد العلوي"
+              placeholder={t('order_form.full_name_placeholder')}
               className={`w-full px-4 py-3 rounded-xl border outline-none transition-all placeholder:text-slate-400 text-sm md:text-base ${
                 errors.customerName
                   ? 'border-red-500 bg-red-50/20 focus:ring-2 focus:ring-red-500/20 text-slate-900'
@@ -406,15 +433,15 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
             )}
           </div>
 
-          {/* Moroccan Phone Number (رقم الهاتف) - Strictly Required */}
+          {/* Moroccan Phone Number */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label htmlFor={`${formId}-phone`} className="block text-sm font-semibold text-slate-800">
-                رقم الهاتف (الواتساب) <span className="text-red-500 font-bold">*</span>
+                {t('order_form.phone_number')} <span className="text-red-500 font-bold">*</span>
               </label>
               <span className="text-xs text-slate-500 flex items-center gap-1">
                 <PhoneCall className="w-3 h-3 text-emerald-600" />
-                سنتصل بك لتأكيد الطلب
+                {t('order_form.call_confirmation')}
               </span>
             </div>
             
@@ -427,7 +454,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
                 onChange={(e) => handlePhoneChange(e.target.value)}
                 onBlur={() => handleBlur('phoneNumber')}
                 onFocus={handleFieldFocus}
-                placeholder="0612345678"
+                placeholder={t('order_form.phone_number_placeholder')}
                 maxLength={14}
                 className={`w-full px-4 py-3 rounded-xl border text-left font-mono tracking-wider outline-none transition-all text-base ${
                   errors.phoneNumber
@@ -437,7 +464,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
                     : 'border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900'
                 }`}
               />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+              <div className="absolute end-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-medium">🇲🇦 +212</span>
                 {isPhoneValid && !errors.phoneNumber && (
                   <Check className="w-4 h-4 text-emerald-600" />
@@ -445,7 +472,6 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
               </div>
             </div>
 
-            {/* Real-time Phone Feedback / Error */}
             {errors.phoneNumber && (
               <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1 font-medium">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
@@ -455,15 +481,15 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
             {!errors.phoneNumber && isPhoneValid && (
               <p className="mt-1.5 text-xs text-emerald-700 flex items-center gap-1">
                 <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                <span>رقم هاتف مغربي صحيح ✓</span>
+                <span>{isRTL ? 'رقم هاتف مغربي صحيح ✓' : 'Valid Moroccan phone number ✓'}</span>
               </p>
             )}
           </div>
 
-          {/* Moroccan City Dropdown (المدينة) - Strictly Required */}
+          {/* Moroccan City Dropdown */}
           <div>
             <label htmlFor={`${formId}-city`} className="block text-sm font-semibold text-slate-800 mb-1.5">
-              المدينة <span className="text-red-500 font-bold">*</span>
+              {t('order_form.city')} <span className="text-red-500 font-bold">*</span>
             </label>
             <div className="relative">
               <select
@@ -478,14 +504,18 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
                     : 'border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 text-slate-900'
                 }`}
               >
-                <option value="">-- المرجو اختيار المدينة (إجباري) --</option>
-                {MOROCCAN_CITIES.map((c) => (
-                  <option key={c.id} value={c.nameAr}>
-                    {c.nameAr} ({c.nameFr}) — {c.shippingDelay}
-                  </option>
-                ))}
+                <option value="">{t('order_form.select_city')}</option>
+                {MOROCCAN_CITIES.map((c) => {
+                  const cityName = isRTL ? c.nameAr : c.nameFr;
+                  const altName = isRTL ? c.nameFr : c.nameAr;
+                  return (
+                    <option key={c.id} value={cityName}>
+                      {cityName} ({altName}) — {c.shippingDelay}
+                    </option>
+                  );
+                })}
               </select>
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+              <div className="absolute end-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                 ▼
               </div>
             </div>
@@ -497,15 +527,15 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
             ) : (
               <p className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
                 <Truck className="w-3 h-3 text-emerald-600" />
-                <span>التوصيل مجاني 100% إلى جميع المدن المغربية المسجلة</span>
+                <span>{freeShippingNote}</span>
               </p>
             )}
           </div>
 
-          {/* Address (العنوان) - Strictly Required */}
+          {/* Address */}
           <div>
             <label htmlFor={`${formId}-address`} className="block text-sm font-semibold text-slate-800 mb-1.5">
-              العنوان السكني أو الحي <span className="text-red-500 font-bold">*</span>
+              {t('order_form.address')} <span className="text-red-500 font-bold">*</span>
             </label>
             <input
               id={`${formId}-address`}
@@ -514,7 +544,7 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
               onChange={(e) => handleAddressChange(e.target.value)}
               onBlur={() => handleBlur('address')}
               onFocus={handleFieldFocus}
-              placeholder="مثال: حي السلام، شارع القدس، إقامة الياسمين عمارة 4 شقة 2"
+              placeholder={t('order_form.address_placeholder')}
               className={`w-full px-4 py-3 rounded-xl border outline-none transition-all placeholder:text-slate-400 text-sm md:text-base ${
                 errors.address
                   ? 'border-red-500 bg-red-50/20 focus:ring-2 focus:ring-red-500/20 text-slate-900'
@@ -529,17 +559,17 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
             )}
           </div>
 
-          {/* Notes (Optional) */}
+          {/* Notes */}
           <div>
             <label htmlFor={`${formId}-notes`} className="block text-xs font-medium text-slate-600 mb-1">
-              ملاحظة للموزع (اختياري):
+              {t('order_form.notes')}:
             </label>
             <input
               id={`${formId}-notes`}
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="مثال: الاتصال بعد الساعة 3 زوالاً"
+              placeholder={t('order_form.notes_placeholder')}
               className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800 outline-none focus:border-emerald-500"
             />
           </div>
@@ -548,23 +578,23 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
         {/* Price Summary Breakdown */}
         <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2 text-sm">
           <div className="flex justify-between items-center text-slate-600">
-            <span>المنتج ({quantity} قطعة):</span>
-            <span className="font-semibold text-slate-800">{totalPrice} درهم</span>
+            <span>{t('order_form.product_price')} ({quantity}):</span>
+            <span className="font-semibold text-slate-800">{totalPrice} {t('common.currency')}</span>
           </div>
           <div className="flex justify-between items-center text-slate-600">
-            <span>التوصيل السريع (المغرب):</span>
-            <span className="text-emerald-700 font-bold">مجاناً (0 درهم)</span>
+            <span>{t('order_form.shipping')}:</span>
+            <span className="text-emerald-700 font-bold">{t('order_form.free_shipping')}</span>
           </div>
           {savings > 0 && (
             <div className="flex justify-between items-center text-amber-700 text-xs">
-              <span>قيمة التوفير اليوم:</span>
-              <span className="font-bold">-{savings} درهم</span>
+              <span>{t('order_form.you_save')}:</span>
+              <span className="font-bold">-{savings} {t('common.currency')}</span>
             </div>
           )}
           <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-base font-black text-slate-900">
-            <span>المجموع الصافي للدفع:</span>
+            <span>{t('order_form.total')}:</span>
             <span className="text-2xl text-emerald-700 font-black">
-              {totalPrice} <span className="text-sm font-semibold">درهم</span>
+              {totalPrice} <span className="text-sm font-semibold">{t('common.currency')}</span>
             </span>
           </div>
         </div>
@@ -574,36 +604,61 @@ export const MoroccanOrderForm: React.FC<MoroccanOrderFormProps> = ({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-lg md:text-xl shadow-lg transition-all duration-200 cursor-pointer disabled:opacity-60 flex flex-col items-center justify-center gap-1 group animate-cod-cta"
+            className="w-full py-4 px-6 rounded-2xl text-white font-black text-lg md:text-xl shadow-lg transition-all duration-200 cursor-pointer disabled:opacity-60 flex flex-col items-center justify-center gap-1 group animate-cod-cta hover:opacity-95"
+            style={{
+              backgroundColor: orderFormConfig?.submitButtonColor || primaryColor,
+              color: orderFormConfig?.submitButtonTextColor || '#ffffff'
+            }}
           >
             <div className="flex items-center gap-2">
               <ShoppingBag className="w-6 h-6 transition-transform group-hover:scale-110" />
-              <span>{isSubmitting ? 'جاري تأكيد طلبك...' : 'اضغط هنا للطلب الآن'}</span>
+              <span>
+                {isSubmitting ? t('order_form.submitting') : submitButtonText}
+              </span>
             </div>
-            <span className="text-xs md:text-sm font-normal text-emerald-100 flex items-center gap-1.5">
-              <span>الدفع عند الاستلام بعد معاينة المنتج 📦 والتوصيل بالمجان</span>
-            </span>
+            {submitButtonSubtext && (
+              <span className="text-xs md:text-sm font-normal text-white/90 flex items-center gap-1.5">
+                <span>{submitButtonSubtext}</span>
+              </span>
+            )}
           </button>
         </div>
 
         {/* Moroccan Trust & Guarantees Badges */}
-        <div className="grid grid-cols-3 gap-2 pt-2 text-center text-xs text-slate-600 border-t border-slate-100">
-          <div className="flex flex-col items-center gap-1 p-2 bg-slate-50 rounded-lg">
-            <Truck className="w-5 h-5 text-emerald-600" />
-            <span className="font-semibold text-slate-800">توصيل سريع</span>
-            <span className="text-[10px] text-slate-500">24h إلى 48h</span>
-          </div>
-          <div className="flex flex-col items-center gap-1 p-2 bg-slate-50 rounded-lg">
-            <ShieldCheck className="w-5 h-5 text-emerald-600" />
-            <span className="font-semibold text-slate-800">الدفع عند الاستلام</span>
-            <span className="text-[10px] text-slate-500">تفقد سلعتك أولاً</span>
-          </div>
-          <div className="flex flex-col items-center gap-1 p-2 bg-slate-50 rounded-lg">
-            <Check className="w-5 h-5 text-emerald-600" />
-            <span className="font-semibold text-slate-800">ضمان الاستبدال</span>
-            <span className="text-[10px] text-slate-500">14 يوماً مجاناً</span>
-          </div>
-        </div>
+        {(() => {
+          const b1 = {
+            title: getLocalizedText(orderFormConfig?.trustBadge1Title, currentLang) || t('order_form.trust_delivery_title'),
+            sub: getLocalizedText(orderFormConfig?.trustBadge1Sub, currentLang) || t('order_form.trust_delivery_sub'),
+            icon: Truck
+          };
+          const b2 = {
+            title: getLocalizedText(orderFormConfig?.trustBadge2Title, currentLang) || t('order_form.trust_cod_title'),
+            sub: getLocalizedText(orderFormConfig?.trustBadge2Sub, currentLang) || t('order_form.trust_cod_sub'),
+            icon: ShieldCheck
+          };
+          const b3 = {
+            title: getLocalizedText(orderFormConfig?.trustBadge3Title, currentLang) || t('order_form.trust_guarantee_title'),
+            sub: getLocalizedText(orderFormConfig?.trustBadge3Sub, currentLang) || t('order_form.trust_guarantee_sub'),
+            icon: Check
+          };
+          const badges = [b1, b2, b3].filter(b => Boolean(b.title?.trim()));
+          if (badges.length === 0) return null;
+
+          return (
+            <div className={`grid grid-cols-${badges.length} gap-2 pt-2 text-center text-xs text-slate-600 border-t border-slate-100`}>
+              {badges.map((badge, idx) => {
+                const IconComponent = badge.icon;
+                return (
+                  <div key={idx} className="flex flex-col items-center gap-1 p-2 bg-slate-50 rounded-lg">
+                    <IconComponent className="w-5 h-5 text-emerald-600" />
+                    <span className="font-semibold text-slate-800">{badge.title}</span>
+                    {badge.sub && <span className="text-[10px] text-slate-500">{badge.sub}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </form>
     </div>
   );

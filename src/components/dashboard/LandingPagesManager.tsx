@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Product, Store } from '../../types';
 import { deleteProduct } from '../../lib/storage';
+import { getLocalizedText } from '../../utils/i18n';
 import { 
   Plus, ExternalLink, Edit3, Trash2, Copy, 
   Check, Loader2, AlertTriangle, ShieldAlert, Database, X,
@@ -55,7 +56,7 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
     try {
       const success = await deleteProduct(docId);
       if (success) {
-        setDeleteSuccessMessage(`تم حذف المنتج "${productToDelete.name}" (ID: ${docId}) نهائياً من قاعدة بيانات Firebase Firestore.`);
+        setDeleteSuccessMessage(`تم حذف المنتج "${getLocalizedText(productToDelete.name)}" (ID: ${docId}) نهائياً من قاعدة بيانات Firebase Firestore.`);
         onProductsChange();
         setProductToDelete(null);
         setTimeout(() => setDeleteSuccessMessage(null), 4000);
@@ -191,7 +192,7 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                 <div className="relative bg-slate-50 border-b border-slate-100 overflow-hidden p-3 min-h-[190px] flex items-center justify-center">
                   <img
                     src={product.images[0] || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'}
-                    alt={product.name}
+                    alt={getLocalizedText(product.name)}
                     referrerPolicy="no-referrer"
                     className="w-full h-auto max-h-[180px] object-contain group-hover:scale-105 transition-transform duration-300"
                   />
@@ -212,11 +213,11 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                 {/* Content */}
                 <div className="p-4 space-y-3">
                   <div>
-                    <h3 className="font-bold text-sm text-slate-900 line-clamp-1" title={product.name}>
-                      {product.name}
+                    <h3 className="font-bold text-sm text-slate-900 line-clamp-1" title={getLocalizedText(product.name)}>
+                      {getLocalizedText(product.name)}
                     </h3>
                     <p className="text-xs text-slate-500 line-clamp-2 mt-1">
-                      {product.shortDescription}
+                      {getLocalizedText(product.shortDescription)}
                     </p>
                   </div>
 
@@ -359,8 +360,8 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
             <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2 text-xs">
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 font-medium">اسم المنتج:</span>
-                <span className="font-bold text-slate-900 truncate max-w-[200px]" title={productToDelete.name}>
-                  {productToDelete.name}
+                <span className="font-bold text-slate-900 truncate max-w-[200px]" title={getLocalizedText(productToDelete.name)}>
+                  {getLocalizedText(productToDelete.name)}
                 </span>
               </div>
 

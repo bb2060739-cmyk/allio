@@ -1,5 +1,6 @@
 import React from 'react';
 import { AdminUser, logoutAdmin } from '../../lib/auth';
+import { LanguageSwitcher } from '../common/LanguageSwitcher';
 import { 
   BarChart3, Layers, ShoppingCart, Activity, 
   ExternalLink, LogOut, ShieldCheck, UserCheck,
@@ -121,16 +122,19 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             <button
               onClick={onTogglePixelDebugger}
               title="مراقب أحداث البيكسل المباشر"
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 transition-colors"
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 transition-colors cursor-pointer"
             >
               <Activity className="w-4 h-4" />
             </button>
+
+            {/* Language Switcher */}
+            <LanguageSwitcher />
 
             {/* Visit Public Storefront */}
             <button
               onClick={onNavigateToPublicStore}
               title="زيارة المتجر العام للزبائن"
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-colors"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
             >
               <span>المتجر العام</span>
               <ExternalLink className="w-3.5 h-3.5" />

@@ -8,6 +8,7 @@ import {
   generateWhatsAppConfirmLink,
   getProducts 
 } from '../../lib/storage';
+import { getLocalizedText } from '../../utils/i18n';
 import { 
   Search, Download, MessageSquare, Trash2, Plus, 
   Clock, CheckCircle, Truck, XCircle, PackageCheck, AlertCircle, RefreshCw,
@@ -218,7 +219,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
       if (formProductId !== 'custom') {
         const prod = availableProducts.find(p => p.id === formProductId);
         if (prod) {
-          finalProductName = prod.name;
+          finalProductName = getLocalizedText(prod.name);
           finalProductId = prod.id;
         }
       }
@@ -752,7 +753,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
                 >
                   {availableProducts.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.price} درهم)
+                      {getLocalizedText(p.name)} ({p.price} درهم)
                     </option>
                   ))}
                   <option value="custom">+ منتج مخصص آخر...</option>

@@ -1,3 +1,6 @@
+export type SupportedLanguage = 'ar' | 'en' | 'fr' | 'es';
+export type LocalizedString = string | Partial<Record<SupportedLanguage, string>>;
+
 export type OrderStatus = 'new' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
 
 export interface StoreDesign {
@@ -6,7 +9,24 @@ export interface StoreDesign {
   logoType: 'text' | 'image';
   logoText: string;
   logoImageUrl?: string;
-  announcementText?: string;
+  announcementText?: LocalizedString;
+  // Storefront Catalog CMS customization
+  heroBadge?: LocalizedString;
+  heroTitle?: LocalizedString;
+  heroSubtitle?: LocalizedString;
+  pillar1Title?: LocalizedString;
+  pillar1Desc?: LocalizedString;
+  pillar2Title?: LocalizedString;
+  pillar2Desc?: LocalizedString;
+  pillar3Title?: LocalizedString;
+  pillar3Desc?: LocalizedString;
+  catalogTitle?: LocalizedString;
+  catalogSubtitle?: LocalizedString;
+  buyButtonText?: LocalizedString;
+  buyButtonColor?: string;
+  buyButtonTextColor?: string;
+  footerText?: LocalizedString;
+  footerCopyright?: LocalizedString;
 }
 
 export interface Store {
@@ -24,67 +44,115 @@ export interface Store {
 
 export interface HeroSectionConfig {
   enabled: boolean;
-  badgeText?: string;
-  headline?: string;
-  subheadline?: string;
-  ctaText?: string;
+  badgeText?: LocalizedString;
+  headline?: LocalizedString;
+  subheadline?: LocalizedString;
+  ctaText?: LocalizedString;
+  ctaColor?: string;
+  ctaTextColor?: string;
   heroImageUrl?: string;
+}
+
+export interface ScarcitySectionConfig {
+  enabled: boolean;
+  stockText?: LocalizedString; // Supports {stock} placeholder
+  viewersText?: LocalizedString; // Supports {count} placeholder
 }
 
 export interface FeatureItem {
   id: string;
-  title: string;
-  description?: string;
+  title: LocalizedString;
+  description?: LocalizedString;
 }
 
 export interface FeaturesSectionConfig {
   enabled: boolean;
-  title?: string;
+  title?: LocalizedString;
   items: FeatureItem[];
 }
 
 export interface TestimonialItem {
   id: string;
-  name: string;
-  city: string;
+  name: LocalizedString;
+  city: LocalizedString;
   rating: number;
-  comment: string;
+  comment: LocalizedString;
   avatarUrl?: string;
 }
 
 export interface TestimonialsSectionConfig {
   enabled: boolean;
-  title?: string;
+  title?: LocalizedString;
+  verifiedBadgeText?: LocalizedString;
+  ratingNoteText?: LocalizedString;
   items: TestimonialItem[];
 }
 
 export interface GuaranteeSectionConfig {
   enabled: boolean;
-  title?: string;
-  description?: string;
-  badgeText?: string;
+  title?: LocalizedString;
+  description?: LocalizedString;
+  badgeText?: LocalizedString;
+  bgColor?: string;
+  textColor?: string;
+}
+
+export interface ReassurancesSectionConfig {
+  enabled: boolean;
+  items: LocalizedString[];
+}
+
+export interface OrderFormDesignConfig {
+  enabled: boolean;
+  title?: LocalizedString;
+  subtitle?: LocalizedString;
+  submitButtonText?: LocalizedString;
+  submitButtonSubtext?: LocalizedString;
+  submitButtonColor?: string;
+  submitButtonTextColor?: string;
+  freeShippingText?: LocalizedString;
+  callConfirmationText?: LocalizedString;
+  trustBadge1Title?: LocalizedString;
+  trustBadge1Sub?: LocalizedString;
+  trustBadge2Title?: LocalizedString;
+  trustBadge2Sub?: LocalizedString;
+  trustBadge3Title?: LocalizedString;
+  trustBadge3Sub?: LocalizedString;
+}
+
+export interface FooterSectionConfig {
+  enabled: boolean;
+  text?: LocalizedString;
+  copyrightText?: LocalizedString;
 }
 
 export interface LandingPageDesignConfig {
+  headerCtaText?: LocalizedString;
+  headerCtaColor?: string;
   hero: HeroSectionConfig;
+  scarcity?: ScarcitySectionConfig;
   features: FeaturesSectionConfig;
   testimonials: TestimonialsSectionConfig;
   guarantee: GuaranteeSectionConfig;
+  reassurances?: ReassurancesSectionConfig;
+  orderForm?: OrderFormDesignConfig;
+  footer?: FooterSectionConfig;
+  stickyMobileCtaText?: LocalizedString;
 }
 
 export interface Product {
   id: string;
   storeId?: string; // Belongs to Store
   slug: string;
-  name: string;
+  name: LocalizedString;
   price: number; // In Moroccan Dirhams (DH)
   originalPrice?: number;
   currency: 'DH' | 'MAD';
-  shortDescription: string;
-  fullDescription: string;
-  features: string[];
+  shortDescription: LocalizedString;
+  fullDescription: LocalizedString;
+  features: LocalizedString[];
   images: string[];
-  badge?: string;
+  badge?: LocalizedString;
   freeShipping: boolean;
   inStock: boolean;
   stockCount: number;
