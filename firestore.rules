@@ -22,7 +22,12 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // 5. System metadata & Health Check
+    // 5. Analytics Collection (Daily Aggregated Documents - Zero Heartbeat)
+    match /analytics/{dateId} {
+      allow read, write: if true;
+    }
+
+    // 6. System metadata & Health Check
     match /_system/{docId} {
       allow read, write: if true;
     }

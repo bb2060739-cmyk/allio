@@ -33,6 +33,7 @@ import { PixelEventDebugger } from './components/dashboard/PixelEventDebugger';
 import { PublicProductLanding } from './components/landing/PublicProductLanding';
 import { StorefrontCatalog } from './components/landing/StorefrontCatalog';
 import { ProductNotFound } from './components/landing/ProductNotFound';
+import { recordVisitorSession } from './lib/visitorTracking';
 import { 
   Smartphone, Monitor, ExternalLink, ArrowRight, 
   Copy, Check, LogOut, Loader2 
@@ -181,6 +182,14 @@ function StorefrontRoute({
   const navigate = useNavigate();
   const activeStore = stores.find(s => s.isDefault) || stores[0];
 
+  useEffect(() => {
+    recordVisitorSession({
+      path: '/',
+      storeId: activeStore?.id || 'store-default',
+      pageTitle: activeStore?.name || 'متجر Allio'
+    });
+  }, [activeStore]);
+
   // If normal customer (unauthenticated), render ONLY clean storefront with no admin banner
   if (!isAuth) {
     return (
@@ -261,6 +270,17 @@ function DynamicLandingPageRoute({
       });
     }
   }, [product, slug]);
+
+  useEffect(() => {
+    if (product) {
+      const prodName = typeof product.name === 'string' ? product.name : (typeof product.name === 'object' ? (product.name as any)?.ar || 'صفحة هبوط' : 'صفحة هبوط');
+      recordVisitorSession({
+        path: `/${product.slug}`,
+        storeId: product.storeId || 'store-default',
+        pageTitle: prodName
+      });
+    }
+  }, [product]);
 
   if (isFetchingSingle) {
     return (

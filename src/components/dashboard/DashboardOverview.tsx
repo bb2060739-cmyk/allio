@@ -32,6 +32,7 @@ import {
   CartesianGrid,
   Tooltip
 } from 'recharts';
+import { VisitorAnalyticsSection } from './VisitorAnalyticsSection';
 
 interface DashboardOverviewProps {
   stats: DashboardStats;
@@ -847,6 +848,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Granular Visitor Analytics (Zero-Heartbeat Session-Based Tracking) */}
+      <VisitorAnalyticsSection />
     </div>
   );
 };

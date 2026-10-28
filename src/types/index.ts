@@ -237,3 +237,30 @@ export interface DashboardStats {
   conversionRate: number;
   averageOrderValue: number;
 }
+
+export type VisitorDeviceType = 'mobile' | 'desktop' | 'tablet';
+export type VisitorOS = 'iOS' | 'Android' | 'Windows' | 'Mac' | 'Linux' | 'Other';
+
+export interface VisitorSession {
+  id: string;
+  timestamp: string; // ISO string
+  deviceType: VisitorDeviceType;
+  os: VisitorOS;
+  browser: string;
+  referrer: string; // Categorized: 'Facebook' | 'TikTok' | 'Instagram' | 'Google' | 'Snapchat' | 'Direct' | string
+  referrerUrl?: string;
+  country: string; // e.g. "Morocco", "MA"
+  countryCode?: string;
+  city?: string;
+  path: string; // e.g. "/smart-watch" or "/"
+  storeId?: string;
+  pageTitle?: string;
+}
+
+export interface DailyAnalyticsDoc {
+  date: string; // 'YYYY-MM-DD'
+  totalVisits: number;
+  sessions: VisitorSession[];
+  lastUpdated: string;
+}
+

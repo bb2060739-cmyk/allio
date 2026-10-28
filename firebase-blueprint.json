@@ -77,6 +77,18 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "name", "slug"]
+    },
+    "Analytics": {
+      "title": "Analytics",
+      "description": "Daily aggregated visitor sessions for zero-heartbeat traffic tracking",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "totalVisits": { "type": "number" },
+        "sessions": { "type": "array" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["date", "sessions"]
     }
   },
   "firestore": {
@@ -91,6 +103,10 @@
     "/stores/{storeId}": {
       "schema": "Store",
       "description": "Multi-store and niche configurations collection"
+    },
+    "/analytics/{dateId}": {
+      "schema": "Analytics",
+      "description": "Daily visitor analytics sessions with zero heartbeat"
     }
   }
 }
