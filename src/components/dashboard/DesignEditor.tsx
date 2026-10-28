@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Store, Product, LandingPageDesignConfig, LocalizedString, SupportedLanguage } from '../../types';
-import { saveStore, saveProduct, getDefaultDesignConfig } from '../../lib/storage';
-import { SUPPORTED_LANGUAGES } from '../../i18n';
+import { Store, Product, LayoutBlock, LayoutBlockType } from '../../types';
+import { saveStore, saveProduct, getDefaultLayoutBlocks } from '../../lib/storage';
 import { getLocalizedText } from '../../utils/i18n';
 import { 
   Palette, Layers, Check, Eye, EyeOff, Plus, Trash2, 
-  Sparkles, ShieldCheck, Star, ArrowRight, Loader2, Save,
-  Store as StoreIcon, Image as ImageIcon, Type,
-  Upload, AlertCircle, X, ShoppingBag, Truck, RefreshCw,
-  CheckCircle, Flame, Languages, Globe
+  Sparkles, ShieldCheck, Star, ArrowRight, ArrowUp, ArrowDown, 
+  Loader2, Save, Store as StoreIcon, Image as ImageIcon,
+  Upload, X, ShoppingBag, Truck, RefreshCw,
+  CheckCircle, Flame, ChevronDown, ChevronUp, GripVertical,
+  Smartphone, Monitor, ExternalLink
 } from 'lucide-react';
 import { validateImageFile, processAndCompressImage, MAX_IMAGE_SIZE_MB } from '../../lib/imageOptimization';
 
@@ -39,6 +39,18 @@ const PRESET_SECONDARY_COLORS = [
   { name: 'أسود مطفي (Onyx)', value: '#000000' }
 ];
 
+const AVAILABLE_BLOCK_TYPES: { type: LayoutBlockType; label: string; desc: string; icon: any }[] = [
+  { type: 'hero', label: 'قسم الواجهة الترويجية (Hero Section)', desc: 'العنوان الرئيسي، الشارة الترويجية، زر الطلب، وصورة الواجهة', icon: Sparkles },
+  { type: 'scarcity', label: 'شريط ندرة المخزون والزوار (Scarcity Banner)', desc: 'عد تنازلي للمخزون المتبقي وعدد الزوار النشطين', icon: Flame },
+  { type: 'gallery', label: 'معرض صور المنتج (Product Gallery)', desc: 'عرض صور وتفاصيل المنتج بجودة عالية', icon: ImageIcon },
+  { type: 'features', label: 'المميزات والمواصفات (Key Features)', desc: 'قائمة المميزات الرئيسية ونقاط قوة المنتج', icon: Check },
+  { type: 'testimonials', label: 'آراء وتقييمات الزبائن (Testimonials)', desc: 'تجارب وآراء الزبائن الحقيقيين مع المدن والشارات', icon: Star },
+  { type: 'guarantee', label: 'قسم الضمان وثقة المتجر (Guarantee)', desc: 'سياسة المعاينة قبل الدفع وضمان الرضا والاستبدال', icon: ShieldCheck },
+  { type: 'reassurances', label: 'نقاط الطمأنينة (Trust Points)', desc: 'شارات الثقة للتوصيل السريع والدفع عند الاستلام', icon: CheckCircle },
+  { type: 'order_form', label: 'استمارة الطلب السريع COD (Order Form)', desc: 'استمارة إدخال الاسم، الهاتف، والمدينة مع أزرار التأكيد', icon: ShoppingBag },
+  { type: 'footer', label: 'تذييل الصفحة وحقوق النشر (Footer)', desc: 'نصوص حقوق الملكية وروابط المتجر', icon: Layers }
+];
+
 export const DesignEditor: React.FC<DesignEditorProps> = ({
   stores,
   products,
@@ -47,49 +59,33 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
   onDataChange,
   onViewProduct
 }) => {
-  // Navigation level
-  const [editorLevel, setEditorLevel] = useState<'store' | 'landing'>('store');
+  // Navigation level: 'landing' (Visual Page Builder) or 'store' (Store Settings)
+  const [editorLevel, setEditorLevel] = useState<'store' | 'landing'>(initialProductId ? 'landing' : 'landing');
   const [selectedStoreId, setSelectedStoreId] = useState<string>(initialStoreId || stores[0]?.id || 'store-default');
   const [selectedProductId, setSelectedProductId] = useState<string>(initialProductId || products[0]?.id || '');
   const [isSaving, setIsSaving] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
-  const [cmsLang, setCmsLang] = useState<SupportedLanguage>('ar');
-
-  const getFieldVal = (field: LocalizedString | undefined, lang: SupportedLanguage): string => {
-    if (!field) return '';
-    if (typeof field === 'string') return lang === 'ar' ? field : '';
-    return field[lang] || '';
-  };
-
-  const updateFieldVal = (current: LocalizedString | undefined, lang: SupportedLanguage, text: string): Record<SupportedLanguage, string> => {
-    const base: Record<SupportedLanguage, string> = { ar: '', en: '', fr: '', es: '' };
-    if (typeof current === 'string') {
-      base.ar = current;
-    } else if (current && typeof current === 'object') {
-      Object.assign(base, current);
-    }
-    base[lang] = text;
-    return base;
-  };
-
-  const cleanLocalizedVal = (val: LocalizedString | undefined): LocalizedString | undefined => {
-    if (!val) return undefined;
-    if (typeof val === 'string') return val.trim() || undefined;
-    const cleaned: Record<string, string> = {};
-    let hasAny = false;
-    for (const [k, v] of Object.entries(val)) {
-      if (v && v.trim()) {
-        cleaned[k] = v.trim();
-        hasAny = true;
-      }
-    }
-    return hasAny ? cleaned : undefined;
-  };
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('mobile');
+  const [isAddBlockModalOpen, setIsAddBlockModalOpen] = useState(false);
+  const [expandedBlockIds, setExpandedBlockIds] = useState<Record<string, boolean>>({
+    'block-hero': true,
+    'block-order-form': true
+  });
 
   // Active Store & Product objects
   const activeStore = stores.find(s => s.id === selectedStoreId) || stores[0];
-  const storeProducts = products.filter(p => p.storeId === activeStore?.id || (!p.storeId && activeStore?.id === 'store-default'));
-  const activeProduct = products.find(p => p.id === selectedProductId) || storeProducts[0] || products[0];
+  const activeProduct = products.find(p => p.id === selectedProductId) || products[0];
+
+  // Auto-switch to landing level when initialProductId is provided
+  useEffect(() => {
+    if (initialProductId) {
+      setSelectedProductId(initialProductId);
+      setEditorLevel('landing');
+    }
+    if (initialStoreId) {
+      setSelectedStoreId(initialStoreId);
+    }
+  }, [initialProductId, initialStoreId]);
 
   // =========================================================================
   // 1. STORE LEVEL CMS STATE
@@ -100,42 +96,41 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
   const [storeLogoText, setStoreLogoText] = useState(activeStore?.design?.logoText || activeStore?.name || 'Allio');
   const [storeLogoImageUrl, setStoreLogoImageUrl] = useState(activeStore?.design?.logoImageUrl || '');
   const [storeFaviconUrl, setStoreFaviconUrl] = useState(activeStore?.design?.faviconUrl || activeStore?.design?.logoImageUrl || '');
-  const [storeAnnouncement, setStoreAnnouncement] = useState<LocalizedString>(activeStore?.design?.announcementText || 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام');
+  const [storeAnnouncement, setStoreAnnouncement] = useState(
+    typeof activeStore?.design?.announcementText === 'string' 
+      ? activeStore.design.announcementText 
+      : getLocalizedText(activeStore?.design?.announcementText, 'ar', 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام')
+  );
 
-  // Storefront Catalog CMS Fields
-  const [storeHeroBadge, setStoreHeroBadge] = useState<LocalizedString>(activeStore?.design?.heroBadge || 'منصة الدفع عند الاستلام في المغرب');
-  const [storeHeroTitle, setStoreHeroTitle] = useState<LocalizedString>(activeStore?.design?.heroTitle || 'منتجات مختارة بعناية، توصيل مجاني إلى باب منزلك');
-  const [storeHeroSubtitle, setStoreHeroSubtitle] = useState<LocalizedString>(activeStore?.design?.heroSubtitle || 'لا داعي للدفع بالبطاقة البنكية مسبقاً. اطلب الآن، تفقد طلبيتك وافحصها مع الموزع، ثم ادفع نقداً بكل راحة وأمان.');
-
-  const [storePillar1Title, setStorePillar1Title] = useState<LocalizedString>(activeStore?.design?.pillar1Title || 'توصيل مجاني 0 درهم');
-  const [storePillar1Desc, setStorePillar1Desc] = useState<LocalizedString>(activeStore?.design?.pillar1Desc || 'شحن سريع لجميع مدن وقرى المغرب مجاناً');
-  const [storePillar2Title, setStorePillar2Title] = useState<LocalizedString>(activeStore?.design?.pillar2Title || 'الدفع بعد المعاينة');
-  const [storePillar2Desc, setStorePillar2Desc] = useState<LocalizedString>(activeStore?.design?.pillar2Desc || 'تفقد طلبيتك وتأكد منها قبل أن تدفع أي درهم للموزع');
-  const [storePillar3Title, setStorePillar3Title] = useState<LocalizedString>(activeStore?.design?.pillar3Title || 'ضمان الرضا 14 يوماً');
-  const [storePillar3Desc, setStorePillar3Desc] = useState<LocalizedString>(activeStore?.design?.pillar3Desc || 'إمكانية الاستبدال أو الاسترجاع بكل سهولة ومرونة');
-
-  const [storeCatalogTitle, setStoreCatalogTitle] = useState<LocalizedString>(activeStore?.design?.catalogTitle || 'أفضل العروض الحالية في المغرب');
-  const [storeCatalogSubtitle, setStoreCatalogSubtitle] = useState<LocalizedString>(activeStore?.design?.catalogSubtitle || 'منتجات أصلية مع توصيل مجاني وضمان الدفع بعد المعاينة عند باب منزلك');
-  const [storeBuyButtonText, setStoreBuyButtonText] = useState<LocalizedString>(activeStore?.design?.buyButtonText || 'طلب الآن عبر الدفع عند الاستلام');
-  const [storeBuyButtonColor, setStoreBuyButtonColor] = useState(activeStore?.design?.buyButtonColor || '#059669');
-  const [storeFooterText, setStoreFooterText] = useState<LocalizedString>(activeStore?.design?.footerText || 'منصة التجارة الإلكترونية الموثوقة بالمغرب. نوفر تجربة تسوق آمنة وسهلة مع الدفع عند الاستلام.');
-  const [storeFooterCopyright, setStoreFooterCopyright] = useState<LocalizedString>(activeStore?.design?.footerCopyright || 'جميع الحقوق محفوظة');
-
-  // Image upload states & refs
   const logoFileInputRef = useRef<HTMLInputElement>(null);
-  const heroFileInputRef = useRef<HTMLInputElement>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [isUploadingHero, setIsUploadingHero] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+
+  // Sync store form when active store changes
+  useEffect(() => {
+    if (activeStore) {
+      setStorePrimaryColor(activeStore.design?.primaryColor || '#059669');
+      setStoreSecondaryColor(activeStore.design?.secondaryColor || '#0f172a');
+      setStoreLogoType(activeStore.design?.logoType || (activeStore.design?.logoImageUrl ? 'image' : 'text'));
+      setStoreLogoText(activeStore.design?.logoText || activeStore.name || 'Allio');
+      setStoreLogoImageUrl(activeStore.design?.logoImageUrl || '');
+      setStoreFaviconUrl(activeStore.design?.faviconUrl || activeStore.design?.logoImageUrl || '');
+      setStoreAnnouncement(
+        typeof activeStore.design?.announcementText === 'string'
+          ? activeStore.design.announcementText
+          : getLocalizedText(activeStore.design?.announcementText, 'ar', 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام')
+      );
+    }
+  }, [activeStore]);
 
   const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setImageError(null);
+    setLogoUploadError(null);
     const val = validateImageFile(file);
     if (!val.valid) {
-      setImageError(val.error || `حجم الصورة يتجاوز الحد الأقصى المسموح به (${MAX_IMAGE_SIZE_MB} ميغابايت).`);
+      setLogoUploadError(val.error || `حجم الصورة يتجاوز الحد الأقصى (${MAX_IMAGE_SIZE_MB} ميغابايت).`);
       if (logoFileInputRef.current) logoFileInputRef.current.value = '';
       return;
     }
@@ -145,87 +140,15 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
       const { dataUrl } = await processAndCompressImage(file, 800);
       setStoreLogoImageUrl(dataUrl);
       setStoreFaviconUrl(dataUrl);
+      setStoreLogoType('image');
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : 'فشل رفع الشعار');
+      setLogoUploadError(err instanceof Error ? err.message : 'فشل معالجة ورفع الشعار');
     } finally {
       setIsUploadingLogo(false);
       if (logoFileInputRef.current) logoFileInputRef.current.value = '';
     }
   };
 
-  const handleHeroFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImageError(null);
-    const val = validateImageFile(file);
-    if (!val.valid) {
-      setImageError(val.error || `حجم الصورة يتجاوز الحد الأقصى المسموح به (${MAX_IMAGE_SIZE_MB} ميغابايت).`);
-      if (heroFileInputRef.current) heroFileInputRef.current.value = '';
-      return;
-    }
-
-    try {
-      setIsUploadingHero(true);
-      const { dataUrl } = await processAndCompressImage(file, 1400);
-      setDesignConfig(prev => ({
-        ...prev,
-        hero: { ...prev.hero, heroImageUrl: dataUrl }
-      }));
-    } catch (err) {
-      setImageError(err instanceof Error ? err.message : 'فشل رفع صورة الواجهة');
-    } finally {
-      setIsUploadingHero(false);
-      if (heroFileInputRef.current) heroFileInputRef.current.value = '';
-    }
-  };
-
-  // Sync store form when active store changes
-  useEffect(() => {
-    if (activeStore) {
-      setStorePrimaryColor(activeStore.design?.primaryColor || '#059669');
-      setStoreSecondaryColor(activeStore.design?.secondaryColor || '#0f172a');
-      setStoreLogoType(activeStore.design?.logoType || 'text');
-      setStoreLogoText(activeStore.design?.logoText || activeStore.name || 'Allio');
-      setStoreLogoImageUrl(activeStore.design?.logoImageUrl || '');
-      setStoreFaviconUrl(activeStore.design?.faviconUrl || activeStore.design?.logoImageUrl || '');
-      setStoreAnnouncement(activeStore.design?.announcementText !== undefined ? activeStore.design.announcementText : 'توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام');
-
-      setStoreHeroBadge(activeStore.design?.heroBadge !== undefined ? activeStore.design.heroBadge : 'منصة الدفع عند الاستلام في المغرب');
-      setStoreHeroTitle(activeStore.design?.heroTitle !== undefined ? activeStore.design.heroTitle : 'منتجات مختارة بعناية، توصيل مجاني إلى باب منزلك');
-      setStoreHeroSubtitle(activeStore.design?.heroSubtitle !== undefined ? activeStore.design.heroSubtitle : 'لا داعي للدفع بالبطاقة البنكية مسبقاً. اطلب الآن، تفقد طلبيتك وافحصها مع الموزع، ثم ادفع نقداً بكل راحة وأمان.');
-
-      setStorePillar1Title(activeStore.design?.pillar1Title !== undefined ? activeStore.design.pillar1Title : 'توصيل مجاني 0 درهم');
-      setStorePillar1Desc(activeStore.design?.pillar1Desc !== undefined ? activeStore.design.pillar1Desc : 'شحن سريع لجميع مدن وقرى المغرب مجاناً');
-      setStorePillar2Title(activeStore.design?.pillar2Title !== undefined ? activeStore.design.pillar2Title : 'الدفع بعد المعاينة');
-      setStorePillar2Desc(activeStore.design?.pillar2Desc !== undefined ? activeStore.design.pillar2Desc : 'تفقد طلبيتك وتأكد منها قبل أن تدفع أي درهم للموزع');
-      setStorePillar3Title(activeStore.design?.pillar3Title !== undefined ? activeStore.design.pillar3Title : 'ضمان الرضا 14 يوماً');
-      setStorePillar3Desc(activeStore.design?.pillar3Desc !== undefined ? activeStore.design.pillar3Desc : 'إمكانية الاستبدال أو الاسترجاع بكل سهولة ومرونة');
-
-      setStoreCatalogTitle(activeStore.design?.catalogTitle !== undefined ? activeStore.design.catalogTitle : 'أفضل العروض الحالية في المغرب');
-      setStoreCatalogSubtitle(activeStore.design?.catalogSubtitle !== undefined ? activeStore.design.catalogSubtitle : 'منتجات أصلية مع توصيل مجاني وضمان الدفع بعد المعاينة عند باب منزلك');
-      setStoreBuyButtonText(activeStore.design?.buyButtonText !== undefined ? activeStore.design.buyButtonText : 'طلب الآن عبر الدفع عند الاستلام');
-      setStoreBuyButtonColor(activeStore.design?.buyButtonColor || '#059669');
-      setStoreFooterText(activeStore.design?.footerText !== undefined ? activeStore.design.footerText : 'منصة التجارة الإلكترونية الموثوقة بالمغرب. نوفر تجربة تسوق آمنة وسهلة مع الدفع عند الاستلام.');
-      setStoreFooterCopyright(activeStore.design?.footerCopyright !== undefined ? activeStore.design.footerCopyright : 'جميع الحقوق محفوظة');
-    }
-  }, [activeStore]);
-
-  // =========================================================================
-  // 2. LANDING PAGE LEVEL CMS STATE
-  // =========================================================================
-  const [designConfig, setDesignConfig] = useState<LandingPageDesignConfig>(
-    activeProduct?.designConfig || getDefaultDesignConfig(activeProduct?.name, activeProduct?.fullDescription)
-  );
-
-  // Sync product design config when selected product changes
-  useEffect(() => {
-    if (activeProduct) {
-      setDesignConfig(activeProduct.designConfig || getDefaultDesignConfig(activeProduct.name, activeProduct.fullDescription));
-    }
-  }, [activeProduct]);
-
-  // Handle Save Store Level Design
   const handleSaveStoreDesign = async () => {
     if (!activeStore) return;
     setIsSaving(true);
@@ -239,45 +162,122 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
         niche: activeStore.niche,
         description: activeStore.description,
         design: {
+          ...activeStore.design,
           primaryColor: storePrimaryColor,
           secondaryColor: storeSecondaryColor,
           logoType: storeLogoType,
           logoText: storeLogoText.trim() || 'Allio',
           logoImageUrl: storeLogoImageUrl.trim(),
-          faviconUrl: storeFaviconUrl.trim() || storeLogoImageUrl.trim(),
-          announcementText: cleanLocalizedVal(storeAnnouncement),
-          heroBadge: cleanLocalizedVal(storeHeroBadge),
-          heroTitle: cleanLocalizedVal(storeHeroTitle),
-          heroSubtitle: cleanLocalizedVal(storeHeroSubtitle),
-          pillar1Title: cleanLocalizedVal(storePillar1Title),
-          pillar1Desc: cleanLocalizedVal(storePillar1Desc),
-          pillar2Title: cleanLocalizedVal(storePillar2Title),
-          pillar2Desc: cleanLocalizedVal(storePillar2Desc),
-          pillar3Title: cleanLocalizedVal(storePillar3Title),
-          pillar3Desc: cleanLocalizedVal(storePillar3Desc),
-          catalogTitle: cleanLocalizedVal(storeCatalogTitle),
-          catalogSubtitle: cleanLocalizedVal(storeCatalogSubtitle),
-          buyButtonText: cleanLocalizedVal(storeBuyButtonText),
-          buyButtonColor: storeBuyButtonColor,
-          buyButtonTextColor: '#ffffff',
-          footerText: cleanLocalizedVal(storeFooterText),
-          footerCopyright: cleanLocalizedVal(storeFooterCopyright)
+          faviconUrl: (storeFaviconUrl || storeLogoImageUrl).trim(),
+          announcementText: storeAnnouncement.trim()
         }
       });
 
-      setSaveToast('تم حفظ هوية ومحتوى واجهة المتجر بنجاح في قاعدة بيانات Firestore!');
+      setSaveToast('تم حفظ هوية وإعدادات المتجر بنجاح في قاعدة بيانات Firestore!');
       onDataChange();
       setTimeout(() => setSaveToast(null), 3500);
     } catch (err) {
       console.error('Failed to save store branding:', err);
-      setSaveToast('حدث خطأ أثناء حفظ تصميم المتجر.');
+      setSaveToast('حدث خطأ أثناء حفظ إعدادات المتجر في Firestore.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Handle Save Landing Page Level Design
-  const handleSaveLandingDesign = async () => {
+  // =========================================================================
+  // 2. BLOCK-BASED VISUAL PAGE BUILDER STATE (LANDING PAGES)
+  // =========================================================================
+  const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
+
+  // Initialize or load blocks whenever activeProduct changes
+  useEffect(() => {
+    if (activeProduct) {
+      if (activeProduct.blocks && Array.isArray(activeProduct.blocks) && activeProduct.blocks.length > 0) {
+        setBlocks(activeProduct.blocks);
+      } else {
+        const prodName = typeof activeProduct.name === 'string' ? activeProduct.name : getLocalizedText(activeProduct.name);
+        const prodDesc = typeof activeProduct.shortDescription === 'string' ? activeProduct.shortDescription : getLocalizedText(activeProduct.shortDescription);
+        setBlocks(getDefaultLayoutBlocks(prodName, prodDesc, activeProduct.images || []));
+      }
+    }
+  }, [activeProduct]);
+
+  // Block manipulation helpers
+  const toggleBlockExpanded = (id: string) => {
+    setExpandedBlockIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const moveBlockUp = (index: number) => {
+    if (index <= 0) return;
+    setBlocks(prev => {
+      const next = [...prev];
+      const temp = next[index - 1];
+      next[index - 1] = next[index];
+      next[index] = temp;
+      return next;
+    });
+  };
+
+  const moveBlockDown = (index: number) => {
+    if (index >= blocks.length - 1) return;
+    setBlocks(prev => {
+      const next = [...prev];
+      const temp = next[index + 1];
+      next[index + 1] = next[index];
+      next[index] = temp;
+      return next;
+    });
+  };
+
+  const toggleBlockEnabled = (index: number) => {
+    setBlocks(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], enabled: !next[index].enabled };
+      return next;
+    });
+  };
+
+  const deleteBlock = (index: number) => {
+    const block = blocks[index];
+    if (window.confirm(`هل أنت متأكد من رغبتك في حذف "${block.title || block.type}" من هذه الصفحة؟`)) {
+      setBlocks(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateBlockData = (index: number, key: string, value: any) => {
+    setBlocks(prev => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        data: {
+          ...next[index].data,
+          [key]: value
+        }
+      };
+      return next;
+    });
+  };
+
+  const handleAddNewBlock = (type: LayoutBlockType) => {
+    const prodName = activeProduct ? (typeof activeProduct.name === 'string' ? activeProduct.name : getLocalizedText(activeProduct.name)) : '';
+    const prodImages = activeProduct?.images || [];
+    const template = getDefaultLayoutBlocks(prodName, '', prodImages).find(b => b.type === type);
+
+    const newBlock: LayoutBlock = {
+      id: `block-${type}-${Date.now()}`,
+      type,
+      title: template?.title || `قسم ${type}`,
+      enabled: true,
+      data: template?.data ? JSON.parse(JSON.stringify(template.data)) : {}
+    };
+
+    setBlocks(prev => [...prev, newBlock]);
+    setExpandedBlockIds(prev => ({ ...prev, [newBlock.id]: true }));
+    setIsAddBlockModalOpen(false);
+  };
+
+  // Save the full blocks layout JSON array to Firestore
+  const handleSaveBlocksLayout = async () => {
     if (!activeProduct) return;
     setIsSaving(true);
     setSaveToast(null);
@@ -285,50 +285,44 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
     try {
       await saveProduct({
         ...activeProduct,
-        designConfig
+        blocks
       });
 
-      setSaveToast(`تم حفظ تصميم وأقسام صفحة الهبوط "${getLocalizedText(activeProduct.name)}" بنجاح!`);
+      setSaveToast(`تم حفظ تخطيط وأقسام صفحة الهبوط "${typeof activeProduct.name === 'string' ? activeProduct.name : getLocalizedText(activeProduct.name)}" بنجاح في Firestore!`);
       onDataChange();
       setTimeout(() => setSaveToast(null), 3500);
     } catch (err) {
-      console.error('Failed to save landing design:', err);
-      setSaveToast('حدث خطأ أثناء حفظ أقسام صفحة الهبوط.');
+      console.error('Failed to save layout blocks:', err);
+      setSaveToast('حدث خطأ أثناء حفظ تخطيط الصفحة في Firestore.');
     } finally {
       setIsSaving(false);
     }
   };
 
+  const pColor = activeStore?.design?.primaryColor || '#059669';
+
   return (
     <div className="space-y-6">
-      {/* Top Banner and Level Switcher */}
+      {/* Top Banner & Switcher */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <Palette className="w-5 h-5 text-emerald-600" />
+            <Layers className="w-5 h-5 text-emerald-600" />
             <h2 className="text-xl font-black text-slate-900">
-              محرر التصميم والمحتوى الديناميكي الشامل (Full Dynamic CMS)
+              {editorLevel === 'landing' 
+                ? 'محرر البلوكات المرئي لصفحات الهبوط (Visual Block Page Builder)' 
+                : 'إعدادات وهوية المتجر العام (Store Settings)'}
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-            تحكم كامل بنسبة 100% في كافة النصوص، الأزرار، الألوان، وأقسام المتجر وصفحات الهبوط. أي حقل تتركه فارغاً أو تقوم بتعطيله سيختفي فوراً من الصفحة.
+            {editorLevel === 'landing'
+              ? 'أضف، رتب، وعدل بلوكات صفحة الهبوط (Hero, Features, Gallery, Testimonials, Form...) بسهولة مع حفظ التخطيط كـ JSON في Firestore.'
+              : 'خصص ألوان المتجر، الشعار، أيقونة التبويب (Favicon) وشريط الإعلانات العام.'}
           </p>
         </div>
 
         {/* Level Toggle Tabs */}
         <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 self-start md:self-auto shrink-0">
-          <button
-            onClick={() => setEditorLevel('store')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              editorLevel === 'store'
-                ? 'bg-white text-emerald-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <StoreIcon className="w-4 h-4" />
-            <span>تصميم المتجر العام (Storefront CMS)</span>
-          </button>
-
           <button
             onClick={() => setEditorLevel('landing')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -338,69 +332,865 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
             }`}
           >
             <Layers className="w-4 h-4" />
-            <span>محرر صفحة الهبوط (Landing Page CMS)</span>
+            <span>محرر البلوكات (Page Builder)</span>
+          </button>
+
+          <button
+            onClick={() => setEditorLevel('store')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              editorLevel === 'store'
+                ? 'bg-white text-emerald-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <StoreIcon className="w-4 h-4" />
+            <span>إعدادات المتجر (Store Settings)</span>
           </button>
         </div>
       </div>
 
-      {/* Multilingual Editor Bar */}
-      <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-            <Languages className="w-4 h-4" />
-          </div>
-          <div>
-            <span className="text-xs font-black block">
-              لغة تحرير المحتوى الحالية ({SUPPORTED_LANGUAGES.find(l => l.code === cmsLang)?.nativeName}):
-            </span>
-            <span className="text-[11px] text-slate-400 block">
-              بدّل بين اللغات لإدخال النصوص المناسبة. جميع اللغات تُحفظ داخل نفس وثيقة Firestore دون مضاعفة القراءات.
-            </span>
-          </div>
-        </div>
-
-        <div className="inline-flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 gap-1 self-start sm:self-auto">
-          {SUPPORTED_LANGUAGES.map((lang) => {
-            const isSelected = cmsLang === lang.code;
-            return (
-              <button
-                key={lang.code}
-                type="button"
-                onClick={() => setCmsLang(lang.code)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  isSelected
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <span>{lang.flag}</span>
-                <span>{lang.nativeName}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Toast Feedback */}
+      {/* Feedback Toast */}
       {saveToast && (
         <div className="p-4 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs flex items-center justify-between animate-in fade-in">
-          <span>{saveToast}</span>
-          <button onClick={() => setSaveToast(null)} className="text-emerald-600 hover:text-emerald-900 cursor-pointer">
-            إغلاق
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600" />
+            <span>{saveToast}</span>
+          </div>
+          <button onClick={() => setSaveToast(null)} className="text-emerald-700 hover:text-emerald-900 cursor-pointer">
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {/* ===================================================================== */}
-      {/* LEVEL 1: STORE LEVEL DESIGN BUILDER */}
+      {/* LEVEL 1: VISUAL BLOCK-BASED PAGE BUILDER (LANDING PAGES) */}
+      {/* ===================================================================== */}
+      {editorLevel === 'landing' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Blocks Builder Column (lg:col-span-7) */}
+          <div className="lg:col-span-7 space-y-4">
+            {/* Top Toolbar: Landing Page Picker & Quick Actions */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex-1">
+                <label className="text-xs font-bold text-slate-700 block mb-1">صفحة الهبوط المستهدفة للتحرير:</label>
+                <select
+                  value={selectedProductId}
+                  onChange={(e) => setSelectedProductId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold text-slate-800 focus:outline-emerald-600 cursor-pointer"
+                >
+                  {products.map((p) => {
+                    const linkedStore = stores.find(s => s.id === p.storeId);
+                    const name = typeof p.name === 'string' ? p.name : getLocalizedText(p.name);
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {name} ({p.price} DH) — [متجر: {linkedStore?.name || 'الرئيسي'}]
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto pt-2 sm:pt-4">
+                {activeProduct && (
+                  <button
+                    onClick={() => onViewProduct(activeProduct)}
+                    title="معاينة الصفحة الحية"
+                    className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>معاينة حية</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddBlockModalOpen(true)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ إضافة بلوك</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Layout Blocks List */}
+            <div className="space-y-3">
+              {blocks.map((block, idx) => {
+                const isExpanded = Boolean(expandedBlockIds[block.id]);
+                const blockMeta = AVAILABLE_BLOCK_TYPES.find(b => b.type === block.type);
+                const IconComponent = blockMeta?.icon || Layers;
+
+                return (
+                  <div 
+                    key={block.id || idx}
+                    className={`bg-white rounded-2xl border transition-all ${
+                      block.enabled 
+                        ? 'border-slate-200 shadow-xs' 
+                        : 'border-slate-200 bg-slate-50/60 opacity-60'
+                    }`}
+                  >
+                    {/* Block Header */}
+                    <div className="p-3.5 flex items-center justify-between gap-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-1 text-slate-400">
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+                        <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                          <IconComponent className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-slate-900 truncate">
+                              {idx + 1}. {block.title || blockMeta?.label || block.type}
+                            </span>
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">
+                              {block.type}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Controls: Reorder, Toggle Visibility, Delete, Expand */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => moveBlockUp(idx)}
+                          disabled={idx === 0}
+                          title="تحريك لأعلى"
+                          className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveBlockDown(idx)}
+                          disabled={idx === blocks.length - 1}
+                          title="تحريك لأسفل"
+                          className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleBlockEnabled(idx)}
+                          title={block.enabled ? 'إخفاء البلوك' : 'إظهار البلوك'}
+                          className={`p-1 rounded cursor-pointer ${block.enabled ? 'text-emerald-600 hover:text-emerald-700' : 'text-slate-400'}`}
+                        >
+                          {block.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteBlock(idx)}
+                          title="حذف البلوك"
+                          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleBlockExpanded(block.id)}
+                          className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Block Settings Body (when expanded) */}
+                    {isExpanded && (
+                      <div className="p-4 space-y-3.5 text-xs bg-slate-50/40 rounded-b-2xl border-t border-slate-50">
+                        {/* HERO BLOCK SETTINGS */}
+                        {block.type === 'hero' && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">الشارة الترويجية (Badge Text):</label>
+                              <input
+                                type="text"
+                                value={block.data.badgeText || ''}
+                                onChange={(e) => updateBlockData(idx, 'badgeText', e.target.value)}
+                                placeholder="عرض حصري بالمغرب 🔥"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">العنوان الرئيسي (Headline):</label>
+                              <input
+                                type="text"
+                                value={block.data.headline || ''}
+                                onChange={(e) => updateBlockData(idx, 'headline', e.target.value)}
+                                placeholder="عنوان جذاب يبرز الفائدة الرئيسية"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-black"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">الوصف الفرعي (Subheadline):</label>
+                              <textarea
+                                rows={2}
+                                value={block.data.subheadline || ''}
+                                onChange={(e) => updateBlockData(idx, 'subheadline', e.target.value)}
+                                placeholder="تفاصيل إضافية تدعم العنوان الرئيسي..."
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">نص زر الطلب (CTA Button):</label>
+                                <input
+                                  type="text"
+                                  value={block.data.ctaText || ''}
+                                  onChange={(e) => updateBlockData(idx, 'ctaText', e.target.value)}
+                                  placeholder="اطلب الآن - الدفع عند الاستلام"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">لون الزر:</label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={block.data.ctaColor || pColor}
+                                    onChange={(e) => updateBlockData(idx, 'ctaColor', e.target.value)}
+                                    className="w-7 h-7 rounded cursor-pointer border border-slate-200 bg-white"
+                                  />
+                                  <span className="font-mono text-[11px] text-slate-500">{block.data.ctaColor || pColor}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">صورة الواجهة (اختياري - URL):</label>
+                              <input
+                                type="url"
+                                value={block.data.heroImageUrl || ''}
+                                onChange={(e) => updateBlockData(idx, 'heroImageUrl', e.target.value)}
+                                placeholder="اتركه فارغاً لاستخدام صور المنتج الرئيسية"
+                                dir="ltr"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-mono text-[11px]"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SCARCITY BLOCK SETTINGS */}
+                        {block.type === 'scarcity' && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">نص ندرة المخزون (استخدم {'{stock}'}):</label>
+                              <input
+                                type="text"
+                                value={block.data.stockText || ''}
+                                onChange={(e) => updateBlockData(idx, 'stockText', e.target.value)}
+                                placeholder="طلب مرتفع اليوم بالمغرب: بقي فقط {stock} قطع بالمستودع"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">نص عدد الزوار (استخدم {'{count}'}):</label>
+                              <input
+                                type="text"
+                                value={block.data.viewersText || ''}
+                                onChange={(e) => updateBlockData(idx, 'viewersText', e.target.value)}
+                                placeholder="{count} زائر يتصفحون هذا العرض حالياً"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* GALLERY BLOCK SETTINGS */}
+                        {block.type === 'gallery' && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">عنوان المعرض:</label>
+                              <input
+                                type="text"
+                                value={block.data.title || ''}
+                                onChange={(e) => updateBlockData(idx, 'title', e.target.value)}
+                                placeholder="صور وتفاصيل المنتج بدقة عالية"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="font-bold text-slate-700 block">روابط الصور ({(block.data.images || []).length}):</label>
+                              {(block.data.images || []).map((imgUrl: string, imgIdx: number) => (
+                                <div key={imgIdx} className="flex items-center gap-2">
+                                  <input
+                                    type="url"
+                                    value={imgUrl}
+                                    dir="ltr"
+                                    onChange={(e) => {
+                                      const newImages = [...(block.data.images || [])];
+                                      newImages[imgIdx] = e.target.value;
+                                      updateBlockData(idx, 'images', newImages);
+                                    }}
+                                    className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-mono text-[11px]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newImages = (block.data.images || []).filter((_: any, i: number) => i !== imgIdx);
+                                      updateBlockData(idx, 'images', newImages);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-rose-600"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newImages = [...(block.data.images || []), 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'];
+                                  updateBlockData(idx, 'images', newImages);
+                                }}
+                                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>إضافة رابط صورة</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* FEATURES BLOCK SETTINGS */}
+                        {block.type === 'features' && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">عنوان قسم المميزات:</label>
+                              <input
+                                type="text"
+                                value={block.data.title || ''}
+                                onChange={(e) => updateBlockData(idx, 'title', e.target.value)}
+                                placeholder="أهم المميزات والمواصفات"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="font-bold text-slate-700 block">نقاط المميزات:</label>
+                              {(block.data.items || []).map((feat: any, fIdx: number) => (
+                                <div key={feat.id || fIdx} className="flex items-center gap-2">
+                                  <span className="w-4 text-center font-bold text-slate-400 text-[10px]">{fIdx + 1}.</span>
+                                  <input
+                                    type="text"
+                                    value={typeof feat.title === 'string' ? feat.title : getLocalizedText(feat.title)}
+                                    onChange={(e) => {
+                                      const newItems = [...(block.data.items || [])];
+                                      newItems[fIdx] = { ...newItems[fIdx], title: e.target.value };
+                                      updateBlockData(idx, 'items', newItems);
+                                    }}
+                                    className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newItems = (block.data.items || []).filter((_: any, i: number) => i !== fIdx);
+                                      updateBlockData(idx, 'items', newItems);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-rose-600"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newItems = [...(block.data.items || []), { id: `f-${Date.now()}`, title: 'ميزة جديدة حصرية' }];
+                                  updateBlockData(idx, 'items', newItems);
+                                }}
+                                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>إضافة ميزة جديدة</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TESTIMONIALS BLOCK SETTINGS */}
+                        {block.type === 'testimonials' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">عنوان قسم التقييمات:</label>
+                                <input
+                                  type="text"
+                                  value={block.data.title || ''}
+                                  onChange={(e) => updateBlockData(idx, 'title', e.target.value)}
+                                  placeholder="آراء وتقييمات زبنائنا في المغرب"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">شارة المشتري المؤكد:</label>
+                                <input
+                                  type="text"
+                                  value={block.data.verifiedBadgeText || ''}
+                                  onChange={(e) => updateBlockData(idx, 'verifiedBadgeText', e.target.value)}
+                                  placeholder="مشتري مؤكد ✓"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="font-bold text-slate-700 block">تقييمات الزبائن ({(block.data.items || []).length}):</label>
+                              {(block.data.items || []).map((item: any, tIdx: number) => (
+                                <div key={item.id || tIdx} className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-700">تقييم #{tIdx + 1}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newItems = (block.data.items || []).filter((_: any, i: number) => i !== tIdx);
+                                        updateBlockData(idx, 'items', newItems);
+                                      }}
+                                      className="text-rose-600 hover:text-rose-800 text-[11px] font-bold"
+                                    >
+                                      حذف
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                      type="text"
+                                      value={typeof item.name === 'string' ? item.name : getLocalizedText(item.name)}
+                                      onChange={(e) => {
+                                        const newItems = [...(block.data.items || [])];
+                                        newItems[tIdx] = { ...newItems[tIdx], name: e.target.value };
+                                        updateBlockData(idx, 'items', newItems);
+                                      }}
+                                      placeholder="اسم الزبون"
+                                      className="px-2 py-1 rounded border border-slate-200 text-xs font-bold"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={typeof item.city === 'string' ? item.city : getLocalizedText(item.city)}
+                                      onChange={(e) => {
+                                        const newItems = [...(block.data.items || [])];
+                                        newItems[tIdx] = { ...newItems[tIdx], city: e.target.value };
+                                        updateBlockData(idx, 'items', newItems);
+                                      }}
+                                      placeholder="المدينة"
+                                      className="px-2 py-1 rounded border border-slate-200 text-xs"
+                                    />
+                                  </div>
+                                  <textarea
+                                    rows={2}
+                                    value={typeof item.comment === 'string' ? item.comment : getLocalizedText(item.comment)}
+                                    onChange={(e) => {
+                                      const newItems = [...(block.data.items || [])];
+                                      newItems[tIdx] = { ...newItems[tIdx], comment: e.target.value };
+                                      updateBlockData(idx, 'items', newItems);
+                                    }}
+                                    placeholder="نص تعليق ورأي الزبون..."
+                                    className="w-full px-2 py-1 rounded border border-slate-200 text-xs"
+                                  />
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newItems = [
+                                    ...(block.data.items || []),
+                                    { id: `t-${Date.now()}`, name: 'زبون جديد', city: 'الدار البيضاء', rating: 5, comment: 'تجربة ممتازة وتعامل محترم جداً!' }
+                                  ];
+                                  updateBlockData(idx, 'items', newItems);
+                                }}
+                                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>إضافة تقييم جديد</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* GUARANTEE BLOCK SETTINGS */}
+                        {block.type === 'guarantee' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">عنوان الضمان:</label>
+                                <input
+                                  type="text"
+                                  value={block.data.title || ''}
+                                  onChange={(e) => updateBlockData(idx, 'title', e.target.value)}
+                                  placeholder="ضمان الرضا والجودة في متجرنا"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">شارة الضمان (Badge):</label>
+                                <input
+                                  type="text"
+                                  value={block.data.badgeText || ''}
+                                  onChange={(e) => updateBlockData(idx, 'badgeText', e.target.value)}
+                                  placeholder="ضمان ذهبي 100%"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">تفاصيل الضمان والمعاينة:</label>
+                              <textarea
+                                rows={2}
+                                value={block.data.description || ''}
+                                onChange={(e) => updateBlockData(idx, 'description', e.target.value)}
+                                placeholder="نوفر لكم إمكانية المعاينة قبل الدفع..."
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white leading-relaxed"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* REASSURANCES BLOCK SETTINGS */}
+                        {block.type === 'reassurances' && (
+                          <div className="space-y-2">
+                            <label className="font-bold text-slate-700 block">نقاط الطمأنينة والثقة:</label>
+                            {(block.data.items || []).map((item: string, rIdx: number) => (
+                              <div key={rIdx} className="flex items-center gap-2">
+                                <span className="font-bold text-slate-400 w-4 text-[10px]">{rIdx + 1}.</span>
+                                <input
+                                  type="text"
+                                  value={item}
+                                  onChange={(e) => {
+                                    const newItems = [...(block.data.items || [])];
+                                    newItems[rIdx] = e.target.value;
+                                    updateBlockData(idx, 'items', newItems);
+                                  }}
+                                  className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newItems = (block.data.items || []).filter((_: any, i: number) => i !== rIdx);
+                                    updateBlockData(idx, 'items', newItems);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-rose-600"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newItems = [...(block.data.items || []), 'نقطة طمأنينة جديدة'];
+                                updateBlockData(idx, 'items', newItems);
+                              }}
+                              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>إضافة نقطة ثقة</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* ORDER FORM BLOCK SETTINGS */}
+                        {block.type === 'order_form' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">عنوان الاستمارة:</label>
+                                <input
+                                  type="text"
+                                  value={block.data.title || ''}
+                                  onChange={(e) => updateBlockData(idx, 'title', e.target.value)}
+                                  placeholder="استمارة الطلب السريع والدفع عند الاستلام"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">لون زر الطلب:</label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={block.data.submitButtonColor || pColor}
+                                    onChange={(e) => updateBlockData(idx, 'submitButtonColor', e.target.value)}
+                                    className="w-7 h-7 rounded cursor-pointer border border-slate-200 bg-white"
+                                  />
+                                  <span className="font-mono text-[11px] text-slate-500">{block.data.submitButtonColor || pColor}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">الوصف التوضيحي للاستمارة:</label>
+                              <input
+                                type="text"
+                                value={block.data.subtitle || ''}
+                                onChange={(e) => updateBlockData(idx, 'subtitle', e.target.value)}
+                                placeholder="أدخل معلوماتك أدناه وسنتصل بك هاتفياً لتأكيد إرسال الطلبية..."
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">نص زر تأكيد الطلب:</label>
+                                <input
+                                  type="text"
+                                  value={block.data.submitButtonText || ''}
+                                  onChange={(e) => updateBlockData(idx, 'submitButtonText', e.target.value)}
+                                  placeholder="اضغط هنا للطلب الآن"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-black"
+                                />
+                              </div>
+                              <div>
+                                <label className="font-bold text-slate-700 block mb-1">النص التوضيحي أسفل الزر:</label>
+                                <input
+                                  type="text"
+                                  value={block.data.submitButtonSubtext || ''}
+                                  onChange={(e) => updateBlockData(idx, 'submitButtonSubtext', e.target.value)}
+                                  placeholder="الدفع عند الاستلام بعد معاينة المنتج 📦"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* FOOTER BLOCK SETTINGS */}
+                        {block.type === 'footer' && (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">نص التذييل:</label>
+                              <input
+                                type="text"
+                                value={block.data.text || ''}
+                                onChange={(e) => updateBlockData(idx, 'text', e.target.value)}
+                                placeholder="متجر مغربي موثوق يوفر تجربة تسوق مريحة..."
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">حقوق النشر (Copyright):</label>
+                              <input
+                                type="text"
+                                value={block.data.copyrightText || ''}
+                                onChange={(e) => updateBlockData(idx, 'copyrightText', e.target.value)}
+                                placeholder="جميع الحقوق محفوظة"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Sticky Save Button */}
+            <div className="pt-2 sticky bottom-4 z-20">
+              <button
+                type="button"
+                onClick={handleSaveBlocksLayout}
+                disabled={isSaving}
+                className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>حفظ تخطيط وأقسام صفحة الهبوط في Firestore (Save Page Layout)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Real-Time Live Preview Drawer (lg:col-span-5) */}
+          <div className="lg:col-span-5 sticky top-20 space-y-3">
+            <div className="bg-slate-900 text-white p-3 rounded-2xl text-xs flex items-center justify-between shadow-sm">
+              <span className="font-bold flex items-center gap-1.5">
+                <Eye className="w-4 h-4 text-emerald-400" />
+                <span>معاينة حية للمخطط في الوقت الحقيقي</span>
+              </span>
+              <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setPreviewDevice('desktop')}
+                  className={`p-1 rounded cursor-pointer ${previewDevice === 'desktop' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}
+                  title="حاسوب"
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDevice('mobile')}
+                  className={`p-1 rounded cursor-pointer ${previewDevice === 'mobile' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}
+                  title="هاتف"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Canvas Container */}
+            <div className={`bg-white rounded-3xl border border-slate-200 shadow-md p-3 max-h-[750px] overflow-y-auto space-y-3 ${
+              previewDevice === 'mobile' ? 'max-w-[380px] mx-auto border-4 border-slate-800' : ''
+            }`}>
+              {/* Header preview */}
+              <div className="p-2 border-b border-slate-100 flex items-center justify-between text-xs">
+                <span className="font-black text-slate-800" style={{ color: pColor }}>
+                  {activeStore?.design?.logoText || activeStore?.name || 'Allio'}
+                </span>
+                <span className="text-[10px] text-white font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: pColor }}>
+                  اطلب الآن
+                </span>
+              </div>
+
+              {/* Dynamically render blocks in exact user order */}
+              {blocks.filter(b => b.enabled).map((b) => {
+                if (b.type === 'hero') {
+                  const hHeadline = b.data.headline || (typeof activeProduct?.name === 'string' ? activeProduct.name : getLocalizedText(activeProduct?.name));
+                  return (
+                    <div 
+                      key={b.id} 
+                      className="rounded-2xl p-4 text-white text-center space-y-2 shadow-xs"
+                      style={{ backgroundColor: activeStore?.design?.secondaryColor || '#0f172a' }}
+                    >
+                      {b.data.badgeText && (
+                        <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: b.data.ctaColor || pColor }}>
+                          {b.data.badgeText}
+                        </span>
+                      )}
+                      <h4 className="font-black text-xs leading-tight">{hHeadline}</h4>
+                      {b.data.subheadline && (
+                        <p className="text-[10px] text-slate-300 leading-relaxed">{b.data.subheadline}</p>
+                      )}
+                      {b.data.ctaText && (
+                        <span 
+                          className="inline-block text-[11px] font-black px-3.5 py-1.5 rounded-lg text-white shadow-xs cursor-pointer"
+                          style={{ backgroundColor: b.data.ctaColor || pColor }}
+                        >
+                          {b.data.ctaText}
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (b.type === 'scarcity') {
+                  const stockTxt = (b.data.stockText || 'بقي فقط {stock} قطع').replace('{stock}', String(activeProduct?.stockCount || 8));
+                  const viewersTxt = (b.data.viewersText || '{count} زائر يتصفحون الآن').replace('{count}', '16');
+                  return (
+                    <div key={b.id} className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-900 flex items-center justify-between font-bold">
+                      <span className="flex items-center gap-1"><Flame className="w-3 h-3 text-amber-600" />{stockTxt}</span>
+                      <span className="text-slate-500">{viewersTxt}</span>
+                    </div>
+                  );
+                }
+
+                if (b.type === 'gallery') {
+                  const imgs = b.data.images && b.data.images.length > 0 ? b.data.images : activeProduct?.images || [];
+                  return (
+                    <div key={b.id} className="space-y-1.5">
+                      <div className="h-40 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center p-2 border border-slate-200">
+                        {imgs[0] ? (
+                          <img src={imgs[0]} alt="Preview" className="w-full h-full object-contain" />
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">صورة المنتج</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (b.type === 'features') {
+                  const feats = b.data.items || [];
+                  return (
+                    <div key={b.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-xs">
+                      <h5 className="font-bold text-slate-900 text-[11px]">{b.data.title || 'أهم المميزات:'}</h5>
+                      {feats.map((f: any, i: number) => (
+                        <div key={i} className="flex items-center gap-1.5 text-[10px] text-slate-700">
+                          <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span>{typeof f.title === 'string' ? f.title : getLocalizedText(f.title)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
+                if (b.type === 'testimonials') {
+                  const tests = b.data.items || [];
+                  return (
+                    <div key={b.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                      <h5 className="font-bold text-slate-900 text-[11px]">{b.data.title || 'آراء الزبائن:'}</h5>
+                      {tests.slice(0, 2).map((t: any, i: number) => (
+                        <div key={i} className="p-1.5 bg-white rounded border border-slate-100 text-[10px] text-slate-600">
+                          <span className="font-bold text-slate-800">{typeof t.name === 'string' ? t.name : getLocalizedText(t.name)}</span>: &quot;{typeof t.comment === 'string' ? t.comment : getLocalizedText(t.comment)}&quot;
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
+                if (b.type === 'guarantee') {
+                  return (
+                    <div key={b.id} className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 text-xs space-y-1">
+                      <div className="flex items-center gap-1 font-bold text-slate-900 text-[11px]">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{b.data.title || 'ضمان الرضا'}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 leading-relaxed">{b.data.description}</p>
+                    </div>
+                  );
+                }
+
+                if (b.type === 'reassurances') {
+                  return (
+                    <div key={b.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 space-y-1 text-[10px] text-slate-600">
+                      {(b.data.items || []).map((it: string, i: number) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span>{it}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
+                if (b.type === 'order_form') {
+                  return (
+                    <div key={b.id} className="p-3 border border-slate-200 rounded-xl bg-slate-50 space-y-2">
+                      <span className="text-[11px] font-bold text-slate-800 block text-center">
+                        {b.data.title || 'استمارة الطلب السريع'}
+                      </span>
+                      <div className="space-y-1">
+                        <div className="h-6 bg-white border border-slate-200 rounded px-2 text-[9px] text-slate-400 flex items-center">الاسم الكامل</div>
+                        <div className="h-6 bg-white border border-slate-200 rounded px-2 text-[9px] text-slate-400 flex items-center">رقم الهاتف (06/07/05)</div>
+                        <div className="h-6 bg-white border border-slate-200 rounded px-2 text-[9px] text-slate-400 flex items-center">المدينة</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="w-full py-2 rounded-lg text-white font-black text-xs shadow-xs"
+                        style={{ backgroundColor: b.data.submitButtonColor || pColor }}
+                      >
+                        {b.data.submitButtonText || 'اضغط هنا للطلب الآن'}
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (b.type === 'footer') {
+                  return (
+                    <div key={b.id} className="p-2.5 bg-slate-900 text-slate-400 text-[10px] text-center rounded-xl space-y-0.5">
+                      <p>{b.data.text || 'متجر موثوق بالمغرب'}</p>
+                      <p className="text-slate-500">© {new Date().getFullYear()} {b.data.copyrightText || 'جميع الحقوق محفوظة'}</p>
+                    </div>
+                  );
+                }
+
+                return null;
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* LEVEL 2: STORE LEVEL BRANDING & CMS BUILDER */}
       {/* ===================================================================== */}
       {editorLevel === 'store' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Controls Form (lg:col-span-7) */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 space-y-5">
             {/* Store Picker */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-              <label className="text-xs font-bold text-slate-700 block">اختر المتجر / النيش للتخصيص:</label>
+              <label className="text-xs font-bold text-slate-700 block">اختر المتجر لتخصيص هويته وشعاره وألوانه:</label>
               <select
                 value={selectedStoreId}
                 onChange={(e) => setSelectedStoreId(e.target.value)}
@@ -408,7 +1198,7 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
               >
                 {stores.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.niche}) - /{s.slug}
+                    {s.name} ({s.niche}) — /{s.slug}
                   </option>
                 ))}
               </select>
@@ -418,17 +1208,15 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                 <Palette className="w-4 h-4 text-emerald-600" />
-                <span>لوحة ألوان المتجر الرئيسية (Primary & Secondary Colors)</span>
+                <span>ألوان هوية المتجر (Primary & Secondary Colors)</span>
               </h3>
 
               {/* Primary Color */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">اللون الأساسي (Primary Color - الأزرار والإبراز):</span>
+                  <span className="font-bold text-slate-700">اللون الأساسي (أزرار الطلب والإبراز):</span>
                   <span className="font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{storePrimaryColor}</span>
                 </div>
-                
-                {/* Swatches */}
                 <div className="flex flex-wrap gap-2">
                   {PRESET_PRIMARY_COLORS.map((c) => (
                     <button
@@ -459,10 +1247,9 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
               {/* Secondary Color */}
               <div className="space-y-2.5 pt-3 border-t border-slate-100">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">اللون الثانوي (Secondary Color - شريط الإعلانات والخلفيات الداكنة):</span>
+                  <span className="font-bold text-slate-700">اللون الثانوي (شريط الإعلانات والقوائم):</span>
                   <span className="font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{storeSecondaryColor}</span>
                 </div>
-
                 <div className="flex flex-wrap gap-2">
                   {PRESET_SECONDARY_COLORS.map((c) => (
                     <button
@@ -472,7 +1259,7 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                       title={c.name}
                       className={`w-7 h-7 rounded-lg border-2 transition-transform hover:scale-110 cursor-pointer ${
                         storeSecondaryColor.toLowerCase() === c.value.toLowerCase()
-                          ? 'border-emerald-500 ring-2 ring-slate-400 scale-105'
+                          ? 'border-emerald-600 ring-2 ring-emerald-500/30 scale-105'
                           : 'border-white shadow-xs'
                       }`}
                       style={{ backgroundColor: c.value }}
@@ -491,367 +1278,141 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
               </div>
             </div>
 
-            {/* Logo, Favicon & Announcement Bar */}
+            {/* Logo & Favicon Section */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center justify-between">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                  <Type className="w-4 h-4 text-emerald-600" />
-                  <span>هوية المتجر، الشعار وأيقونة التبويب (Store Logo & Favicon)</span>
+                  <StoreIcon className="w-4 h-4 text-emerald-600" />
+                  <span>شعار المتجر وأيقونة التبويب (Store Logo & Favicon)</span>
                 </h3>
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Globe className="w-3 h-3 text-emerald-600" />
-                  <span>Dynamic Favicon & Title</span>
-                </span>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setStoreLogoType('text')}
+                    className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-colors ${
+                      storeLogoType === 'text' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    شعار نصي
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStoreLogoType('image')}
+                    className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-colors ${
+                      storeLogoType === 'image' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    شعار مصور / أيقونة
+                  </button>
+                </div>
               </div>
-              <p className="text-[11px] text-slate-500">
-                تحكم في اسم وشعار المتجر وأيقونة التبويب في المتصفح (Favicon). يتم تطبيق الأيقونة والعنوان ديناميكياً على تبويب المتصفح بمجرد تحميل متجرك أو صفحة الهبوط.
-              </p>
 
-              {/* Logo Type Selector */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setStoreLogoType('text')}
-                  className={`py-2 px-3 rounded-xl font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    storeLogoType === 'text'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  <Type className="w-4 h-4" />
-                  <span>شعار نصي عريض (Text Logo)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStoreLogoType('image')}
-                  className={`py-2 px-3 rounded-xl font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    storeLogoType === 'image'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  <ImageIcon className="w-4 h-4" />
-                  <span>شعار بصري / أيقونة (Image Logo / Favicon)</span>
-                </button>
-              </div>
+              {logoUploadError && (
+                <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 p-2.5 rounded-xl font-bold">
+                  {logoUploadError}
+                </div>
+              )}
 
               {storeLogoType === 'text' ? (
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">النص المعروض في الشعار وتبويب المتصفح:</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">اسم الشعار النصي:</label>
                   <input
                     type="text"
                     value={storeLogoText}
                     onChange={(e) => setStoreLogoText(e.target.value)}
                     placeholder="Allio"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-900 bg-slate-50 focus:bg-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold"
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    سيتم توليد أيقونة تبويب (Favicon) ذكية وتلقائية بألوان متجرك مع الحرف الأول من الاسم.
-                  </p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700">
-                      صورة شعار المتجر وأيقونة التبويب (Store Logo / Favicon):
-                    </label>
-                    <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
-                      أقصى حجم: 1 ميغابايت (1MB Max)
-                    </span>
+                  <div className="flex items-center gap-3">
+                    {storeLogoImageUrl ? (
+                      <div className="w-14 h-14 rounded-2xl border border-slate-200 bg-slate-50 p-1 flex items-center justify-center shrink-0 shadow-xs">
+                        <img src={storeLogoImageUrl} alt="Logo Preview" className="w-full h-full object-contain" />
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-2xl border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                        <ImageIcon className="w-7 h-7" />
+                      </div>
+                    )}
+
+                    <div className="flex-1 flex gap-2">
+                      <input
+                        type="file"
+                        ref={logoFileInputRef}
+                        accept="image/*"
+                        onChange={handleLogoFileSelect}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        disabled={isUploadingLogo}
+                        onClick={() => logoFileInputRef.current?.click()}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {isUploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        <span>رفع صورة الشعار / الأيقونة</span>
+                      </button>
+                      {storeLogoImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStoreLogoImageUrl('');
+                            setStoreFaviconUrl('');
+                          }}
+                          className="px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold border border-rose-200 cursor-pointer"
+                        >
+                          إزالة
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {imageError && (
-                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs flex items-center justify-between font-semibold">
-                      <div className="flex items-center gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                        <span>{imageError}</span>
-                      </div>
-                      <button type="button" onClick={() => setImageError(null)} className="text-rose-600 p-1">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 block mb-1">أو أدخل رابط الشعار مباشرة (URL):</label>
                     <input
                       type="url"
                       value={storeLogoImageUrl}
                       onChange={(e) => {
                         setStoreLogoImageUrl(e.target.value);
-                        setStoreFaviconUrl(e.target.value);
+                        if (!storeFaviconUrl) setStoreFaviconUrl(e.target.value);
                       }}
-                      placeholder="https://example.com/logo-or-favicon.png"
+                      placeholder="https://..."
                       dir="ltr"
-                      className="flex-1 px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-slate-50 focus:bg-white"
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 font-mono text-[11px]"
                     />
-                    <input
-                      type="file"
-                      ref={logoFileInputRef}
-                      accept="image/*"
-                      onChange={handleLogoFileSelect}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      disabled={isUploadingLogo}
-                      onClick={() => logoFileInputRef.current?.click()}
-                      className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      {isUploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                      <span>رفع صورة (≤ 1MB)</span>
-                    </button>
                   </div>
 
-                  {/* Thumbnail Preview */}
-                  {storeLogoImageUrl && (
-                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white rounded-lg border border-slate-200 flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-2xs">
-                        <img src={storeLogoImageUrl} alt="Store Logo / Favicon" className="w-full h-full object-contain" />
-                      </div>
-                      <div className="text-xs">
-                        <span className="font-bold text-slate-800 block">شعار المتجر وأيقونة Favicon النشطة</span>
-                        <span className="text-[10px] text-slate-500">تظهر في ترويسة المتجر وتبويب المتصفح</span>
-                      </div>
-                    </div>
-                  )}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 block mb-1">أيقونة التبويب في المتصفح (Favicon URL):</label>
+                    <input
+                      type="url"
+                      value={storeFaviconUrl}
+                      onChange={(e) => setStoreFaviconUrl(e.target.value)}
+                      placeholder="اتركه فارغاً ليطابق صورة الشعار تلقائياً"
+                      dir="ltr"
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 font-mono text-[11px]"
+                    />
+                  </div>
                 </div>
               )}
 
-              {/* Live Browser Tab Simulation Preview */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/90 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                    <Globe className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>معاينة مظهر تبويب المتصفح الحي (Browser Tab Live Preview):</span>
-                  </span>
-                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-full font-bold">
-                    تحديث فوري
-                  </span>
-                </div>
-
-                <div className="bg-slate-200/70 p-2 rounded-lg flex items-center">
-                  <div className="bg-white px-3 py-1.5 rounded-md shadow-2xs flex items-center gap-2 max-w-sm border border-slate-200/70">
-                    {storeLogoType === 'image' && storeLogoImageUrl ? (
-                      <img src={storeLogoImageUrl} alt="Favicon" className="w-4 h-4 object-contain rounded-xs shrink-0" />
-                    ) : (
-                      <div 
-                        className="w-4 h-4 rounded text-[9px] font-black text-white flex items-center justify-center shrink-0 shadow-2xs"
-                        style={{ backgroundColor: storePrimaryColor }}
-                      >
-                        {(storeLogoText || activeStore?.name || 'A').trim().charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="text-xs font-bold text-slate-800 truncate">
-                      {storeLogoText || activeStore?.name || 'Allio'} {getFieldVal(storeHeroTitle, cmsLang) ? `— ${getFieldVal(storeHeroTitle, cmsLang)}` : ''}
-                    </span>
-                    <X className="w-3 h-3 text-slate-400 ml-auto shrink-0 cursor-default" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Announcement Bar */}
-              <div className="pt-3 border-t border-slate-100 space-y-1">
-                <label className="text-xs font-bold text-slate-700 block">شريط الإعلانات العلوي (اتركه فارغاً لإخفائه تماماً):</label>
+              {/* Announcement */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="text-xs font-bold text-slate-700 block mb-1">شريط التنبيهات والإعلانات أعلى المتجر:</label>
                 <input
                   type="text"
-                  value={getFieldVal(storeAnnouncement, cmsLang)}
-                  onChange={(e) => setStoreAnnouncement(updateFieldVal(storeAnnouncement, cmsLang, e.target.value))}
+                  value={storeAnnouncement}
+                  onChange={(e) => setStoreAnnouncement(e.target.value)}
                   placeholder="توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50 focus:bg-white"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs"
                 />
               </div>
             </div>
 
-            {/* Storefront Catalog Hero CMS */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>واجهة المتجر الرئيسي (Storefront Hero Banner)</span>
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                تحكم في نصوص واجهة المتجر الرئيسية. إذا مسحت أي حقل، سيختفي هذا العنصر تلقائياً من الصفحة.
-              </p>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">شارة الواجهة (Hero Badge):</label>
-                  <input
-                    type="text"
-                    value={getFieldVal(storeHeroBadge, cmsLang)}
-                    onChange={(e) => setStoreHeroBadge(updateFieldVal(storeHeroBadge, cmsLang, e.target.value))}
-                    placeholder="منصة الدفع عند الاستلام في المغرب (اتركه فارغاً لإخفائه)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">العنوان الرئيسي للمتجر (Hero Headline):</label>
-                  <input
-                    type="text"
-                    value={getFieldVal(storeHeroTitle, cmsLang)}
-                    onChange={(e) => setStoreHeroTitle(updateFieldVal(storeHeroTitle, cmsLang, e.target.value))}
-                    placeholder="منتجات مختارة بعناية، توصيل مجاني إلى باب منزلك"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold text-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">الوصف الفرعي للواجهة (Hero Subtitle):</label>
-                  <textarea
-                    rows={2}
-                    value={getFieldVal(storeHeroSubtitle, cmsLang)}
-                    onChange={(e) => setStoreHeroSubtitle(updateFieldVal(storeHeroSubtitle, cmsLang, e.target.value))}
-                    placeholder="لا داعي للدفع بالبطاقة البنكية مسبقاً..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs leading-relaxed"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Storefront 3 Pillars (Trust Cards) */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>ركائز الثقة الثلاث (3 Trust Pillars)</span>
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                اترك عنوان أي ركيزة فارغاً لإخفاء صندوقها كلياً من المتجر.
-              </p>
-
-              <div className="space-y-3 text-xs">
-                {/* Pillar 1 */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>الركيزة الأولى (الشحن والتوصيل):</span>
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={getFieldVal(storePillar1Title, cmsLang)}
-                      onChange={(e) => setStorePillar1Title(updateFieldVal(storePillar1Title, cmsLang, e.target.value))}
-                      placeholder="توصيل مجاني 0 درهم"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
-                    />
-                    <input
-                      type="text"
-                      value={getFieldVal(storePillar1Desc, cmsLang)}
-                      onChange={(e) => setStorePillar1Desc(updateFieldVal(storePillar1Desc, cmsLang, e.target.value))}
-                      placeholder="لكافة المدن والقرى المغربية"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Pillar 2 */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>الركيزة الثانية (الدفع والمعاينة):</span>
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={getFieldVal(storePillar2Title, cmsLang)}
-                      onChange={(e) => setStorePillar2Title(updateFieldVal(storePillar2Title, cmsLang, e.target.value))}
-                      placeholder="الدفع بعد المعاينة"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
-                    />
-                    <input
-                      type="text"
-                      value={getFieldVal(storePillar2Desc, cmsLang)}
-                      onChange={(e) => setStorePillar2Desc(updateFieldVal(storePillar2Desc, cmsLang, e.target.value))}
-                      placeholder="افحص جودة منتجك أولاً"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
-                    />
-                  </div>
-                </div>
-
-                {/* Pillar 3 */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                    <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>الركيزة الثالثة (الضمان والاسترجاع):</span>
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={getFieldVal(storePillar3Title, cmsLang)}
-                      onChange={(e) => setStorePillar3Title(updateFieldVal(storePillar3Title, cmsLang, e.target.value))}
-                      placeholder="ضمان 14 يوماً"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
-                    />
-                    <input
-                      type="text"
-                      value={getFieldVal(storePillar3Desc, cmsLang)}
-                      onChange={(e) => setStorePillar3Desc(updateFieldVal(storePillar3Desc, cmsLang, e.target.value))}
-                      placeholder="استبدال أو استرجاع بدون تعقيد"
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Catalog & Cards Buttons */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                <span>أزرار المنتجات والتذييل (Catalog & Footer CMS)</span>
-              </h3>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">عنوان قسم الكتالوج:</label>
-                  <input
-                    type="text"
-                    value={getFieldVal(storeCatalogTitle, cmsLang)}
-                    onChange={(e) => setStoreCatalogTitle(updateFieldVal(storeCatalogTitle, cmsLang, e.target.value))}
-                    placeholder="العروض المتوفرة اليوم"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">نص زر بطاقة المنتج:</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(storeBuyButtonText, cmsLang)}
-                      onChange={(e) => setStoreBuyButtonText(updateFieldVal(storeBuyButtonText, cmsLang, e.target.value))}
-                      placeholder="طلب الآن عبر الدفع عند الاستلام"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">لون زر بطاقة المنتج:</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={storeBuyButtonColor}
-                        onChange={(e) => setStoreBuyButtonColor(e.target.value)}
-                        className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 bg-white"
-                      />
-                      <span className="font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded text-xs">{storeBuyButtonColor}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">نص تذييل المتجر (Footer Text):</label>
-                  <textarea
-                    rows={2}
-                    value={getFieldVal(storeFooterText, cmsLang)}
-                    onChange={(e) => setStoreFooterText(updateFieldVal(storeFooterText, cmsLang, e.target.value))}
-                    placeholder="منصة التجارة الإلكترونية الموثوقة بالمغرب..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* Save Button */}
-            <div className="flex items-center justify-end">
+            <div className="flex justify-end">
               <button
                 type="button"
                 onClick={handleSaveStoreDesign}
@@ -859,1326 +1420,95 @@ export const DesignEditor: React.FC<DesignEditorProps> = ({
                 className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>حفظ هوية وتصميم المتجر بالكامل (Save Store CMS)</span>
+                <span>حفظ هوية وإعدادات المتجر في Firestore</span>
               </button>
             </div>
           </div>
 
-          {/* Interactive Live Preview (lg:col-span-5) */}
-          <div className="lg:col-span-5 sticky top-20 space-y-4">
-            <div className="bg-slate-900 text-white p-3 rounded-2xl text-xs flex items-center justify-between">
+          {/* Store Preview Drawer */}
+          <div className="lg:col-span-5 sticky top-20 space-y-3">
+            <div className="bg-slate-900 text-white p-3 rounded-2xl text-xs flex items-center justify-between shadow-sm">
               <span className="font-bold flex items-center gap-1.5">
-                <Eye className="w-4 h-4 text-emerald-400" />
-                <span>معاينة حية للمتجر (Live Storefront Preview)</span>
+                <StoreIcon className="w-4 h-4 text-emerald-400" />
+                <span>معاينة واجهة المتجر</span>
               </span>
-              <span className="text-[10px] text-emerald-400 font-mono">تحديث فوري</span>
+              <span className="text-[10px] text-emerald-400 font-mono">Storefront</span>
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden max-h-[750px] overflow-y-auto">
-              {/* Mock Announcement */}
-              {(() => {
-                const ann = getLocalizedText(storeAnnouncement, cmsLang);
-                if (!ann || !ann.trim()) return null;
-                return (
-                  <div 
-                    className="py-1.5 px-3 text-center text-[10px] text-white font-bold transition-colors"
-                    style={{ backgroundColor: storeSecondaryColor }}
-                  >
-                    {ann}
-                  </div>
-                );
-              })()}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-md p-4 space-y-3">
+              {/* Header */}
+              <div 
+                className="p-2 text-white text-center text-[10px] font-bold rounded-lg"
+                style={{ backgroundColor: storeSecondaryColor }}
+              >
+                {storeAnnouncement || 'توصيل مجاني لجميع مدن المغرب'}
+              </div>
 
-              {/* Mock Header */}
-              <div className="p-3 border-b border-slate-200 flex items-center justify-between bg-white">
+              <div className="p-2 border-b border-slate-100 flex items-center justify-between">
                 {storeLogoType === 'image' && storeLogoImageUrl ? (
-                  <img src={storeLogoImageUrl} alt="Logo" className="h-6 w-auto object-contain" />
+                  <img src={storeLogoImageUrl} alt="Logo" className="h-7 w-auto object-contain" />
                 ) : (
-                  <span className="text-lg font-black tracking-tight" style={{ color: storePrimaryColor }}>
-                    {storeLogoText || 'Allio'}
+                  <span className="font-black text-sm" style={{ color: storePrimaryColor }}>
+                    {storeLogoText}
                   </span>
                 )}
-                <span 
-                  className="text-[10px] font-bold px-2.5 py-1 rounded-full border"
-                  style={{ 
-                    backgroundColor: `${storePrimaryColor}10`,
-                    borderColor: `${storePrimaryColor}30`,
-                    color: storePrimaryColor
-                  }}
-                >
-                  الدفع بعد المعاينة
+                <span className="text-[10px] text-white font-bold px-2 py-0.5 rounded" style={{ backgroundColor: storePrimaryColor }}>
+                  اطلب الآن
                 </span>
               </div>
 
-              {/* Mock Hero */}
-              {(() => {
-                const hBadge = getLocalizedText(storeHeroBadge, cmsLang);
-                const hTitle = getLocalizedText(storeHeroTitle, cmsLang);
-                const hSub = getLocalizedText(storeHeroSubtitle, cmsLang);
-
-                if (hBadge?.trim() || hTitle?.trim() || hSub?.trim()) {
-                  return (
-                    <div className="p-4 bg-gradient-to-b from-white to-slate-50 border-b border-slate-100 text-center space-y-2">
-                      {hBadge?.trim() && (
-                        <span 
-                          className="inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full"
-                          style={{ backgroundColor: `${storePrimaryColor}15`, color: storePrimaryColor }}
-                        >
-                          {hBadge}
-                        </span>
-                      )}
-                      {hTitle?.trim() && (
-                        <h4 className="font-black text-sm text-slate-900">{hTitle}</h4>
-                      )}
-                      {hSub?.trim() && (
-                        <p className="text-[10px] text-slate-500 leading-relaxed max-w-xs mx-auto">{hSub}</p>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* Mock Pillars */}
-              {(() => {
-                const p1Title = getLocalizedText(storePillar1Title, cmsLang);
-                const p1Desc = getLocalizedText(storePillar1Desc, cmsLang);
-                const p2Title = getLocalizedText(storePillar2Title, cmsLang);
-                const p2Desc = getLocalizedText(storePillar2Desc, cmsLang);
-                const p3Title = getLocalizedText(storePillar3Title, cmsLang);
-                const p3Desc = getLocalizedText(storePillar3Desc, cmsLang);
-
-                if (p1Title?.trim() || p2Title?.trim() || p3Title?.trim()) {
-                  return (
-                    <div className="p-3 bg-slate-50 border-b border-slate-100 space-y-1.5">
-                      {p1Title?.trim() && (
-                        <div className="bg-white p-2 rounded-lg border border-slate-200 text-[10px] flex items-center gap-2">
-                          <Truck className="w-3.5 h-3.5" style={{ color: storePrimaryColor }} />
-                          <span className="font-bold text-slate-800">{p1Title}</span>
-                          <span className="text-slate-400 mr-auto">{p1Desc}</span>
-                        </div>
-                      )}
-                      {p2Title?.trim() && (
-                        <div className="bg-white p-2 rounded-lg border border-slate-200 text-[10px] flex items-center gap-2">
-                          <ShieldCheck className="w-3.5 h-3.5" style={{ color: storePrimaryColor }} />
-                          <span className="font-bold text-slate-800">{p2Title}</span>
-                          <span className="text-slate-400 mr-auto">{p2Desc}</span>
-                        </div>
-                      )}
-                      {p3Title?.trim() && (
-                        <div className="bg-white p-2 rounded-lg border border-slate-200 text-[10px] flex items-center gap-2">
-                          <RefreshCw className="w-3.5 h-3.5" style={{ color: storePrimaryColor }} />
-                          <span className="font-bold text-slate-800">{p3Title}</span>
-                          <span className="text-slate-400 mr-auto">{p3Desc}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* Mock Product Card with Custom Button */}
-              {(() => {
-                const catTitle = getLocalizedText(storeCatalogTitle, cmsLang) || 'العروض المتوفرة:';
-                const buyBtn = getLocalizedText(storeBuyButtonText, cmsLang);
-
-                return (
-                  <div className="p-4 space-y-3">
-                    <span className="text-xs font-bold text-slate-700 block">{catTitle}</span>
-                    <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 space-y-2">
-                      <div className="h-20 bg-slate-200/60 rounded-lg flex items-center justify-center text-slate-400 text-xs">
-                        صورة المنتج
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-800">منتج نموذجي عالي الجودة</span>
-                        <span className="font-black" style={{ color: storePrimaryColor }}>199 DH</span>
-                      </div>
-                      {buyBtn?.trim() && (
-                        <button
-                          type="button"
-                          className="w-full py-2 px-3 rounded-lg text-xs font-bold text-white transition-opacity flex items-center justify-between"
-                          style={{ backgroundColor: storeBuyButtonColor || storePrimaryColor }}
-                        >
-                          <span>{buyBtn}</span>
-                          <ArrowRight className="w-3 h-3 rotate-180" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Mock Footer */}
-              {(() => {
-                const footTxt = getLocalizedText(storeFooterText, cmsLang);
-                const footCopy = getLocalizedText(storeFooterCopyright, cmsLang) || 'جميع الحقوق محفوظة';
-
-                if (!footTxt?.trim()) return null;
-                return (
-                  <div className="p-3 bg-slate-900 text-slate-400 text-[10px] text-center space-y-1">
-                    <p>{footTxt}</p>
-                    <p className="text-slate-500">© {new Date().getFullYear()} {storeLogoText} — {footCopy}</p>
-                  </div>
-                );
-              })()}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2 text-center">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full inline-block" style={{ backgroundColor: `${storePrimaryColor}15`, color: storePrimaryColor }}>
+                  {activeStore?.niche || 'متجر متخصص'}
+                </span>
+                <h4 className="font-black text-xs text-slate-900">{activeStore?.name}</h4>
+                <p className="text-[10px] text-slate-500">{activeStore?.description || 'تسوق براحة وأمان مع ميزة الدفع عند الاستلام'}</p>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ===================================================================== */}
-      {/* LEVEL 2: LANDING PAGE LEVEL DESIGN BUILDER */}
-      {/* ===================================================================== */}
-      {editorLevel === 'landing' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Controls Form (lg:col-span-7) */}
-          <div className="lg:col-span-7 space-y-6">
-            {/* Landing Page Picker */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700 block">اختر صفحة الهبوط لتعديل عناصرها:</label>
-                {activeProduct && (
-                  <button
-                    onClick={() => onViewProduct(activeProduct)}
-                    className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>فتح الصفحة كاملة</span>
-                    <ArrowRight className="w-3.5 h-3.5 rotate-180" />
-                  </button>
-                )}
+      {/* MODAL: ADD NEW BLOCK SELECTOR */}
+      {isAddBlockModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-sm text-slate-900">إضافة بلوك جديد لصفحة الهبوط</h3>
               </div>
-              <select
-                value={selectedProductId}
-                onChange={(e) => setSelectedProductId(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold text-slate-800 focus:outline-emerald-600 cursor-pointer"
-              >
-                {products.map((p) => {
-                  const linkedStore = stores.find(s => s.id === p.storeId);
-                  return (
-                    <option key={p.id} value={p.id}>
-                      {getLocalizedText(p.name)} ({p.price} DH) - [متجر: {linkedStore?.name || 'الرئيسي'}]
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            {/* SECTION: HEADER CTA BUTTON */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                <span>زر الطلب في رأس الصفحة (Header CTA Button)</span>
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                اترك النص فارغاً لإخفاء الزر بالكامل من شريط التنقل العلوي.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">نص زر رأس الصفحة:</label>
-                  <input
-                    type="text"
-                    value={getFieldVal(designConfig.headerCtaText, cmsLang)}
-                    onChange={(e) => setDesignConfig({ ...designConfig, headerCtaText: updateFieldVal(designConfig.headerCtaText, cmsLang, e.target.value) })}
-                    placeholder="اطلب الآن (اتركه فارغاً لإخفائه)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">لون زر رأس الصفحة:</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={designConfig.headerCtaColor || storePrimaryColor}
-                      onChange={(e) => setDesignConfig({ ...designConfig, headerCtaColor: e.target.value })}
-                      className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 bg-white"
-                    />
-                    <span className="font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded text-xs">
-                      {designConfig.headerCtaColor || storePrimaryColor}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* SECTION 1: HERO */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <h3 className="font-bold text-sm text-slate-900">1. قسم الواجهة التسويقية (Hero Section)</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDesignConfig({
-                    ...designConfig,
-                    hero: { ...designConfig.hero, enabled: !designConfig.hero.enabled }
-                  })}
-                  className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    designConfig.hero.enabled
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-slate-100 text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  {designConfig.hero.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  <span>{designConfig.hero.enabled ? 'مفعل (ظاهر)' : 'معطل (مخفي)'}</span>
-                </button>
-              </div>
-
-              {designConfig.hero.enabled && (
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">الشارة الترويجية (Badge Text):</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.hero.badgeText, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        hero: { ...designConfig.hero, badgeText: updateFieldVal(designConfig.hero.badgeText, cmsLang, e.target.value) }
-                      })}
-                      placeholder="عرض حصري بالمغرب 🔥 (اتركه فارغاً لإخفائه)"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">العنوان الرئيسي (Headline):</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.hero.headline, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        hero: { ...designConfig.hero, headline: updateFieldVal(designConfig.hero.headline, cmsLang, e.target.value) }
-                      })}
-                      placeholder="عنوان جذاب يبرز الفائدة الرئيسية"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold text-slate-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">الوصف الفرعي (Subheadline):</label>
-                    <textarea
-                      rows={2}
-                      value={getFieldVal(designConfig.hero.subheadline, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        hero: { ...designConfig.hero, subheadline: updateFieldVal(designConfig.hero.subheadline, cmsLang, e.target.value) }
-                      })}
-                      placeholder="وصف مشوق يدعم العنوان (اتركه فارغاً لإخفائه)"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs leading-relaxed"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">نص زر الطلب في الواجهة (CTA Button):</label>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.hero.ctaText, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          hero: { ...designConfig.hero, ctaText: updateFieldVal(designConfig.hero.ctaText, cmsLang, e.target.value) }
-                        })}
-                        placeholder="اطلب الآن - الدفع عند الاستلام (اتركه فارغاً لإخفائه)"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">لون زر الواجهة:</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={designConfig.hero.ctaColor || storePrimaryColor}
-                          onChange={(e) => setDesignConfig({
-                            ...designConfig,
-                            hero: { ...designConfig.hero, ctaColor: e.target.value }
-                          })}
-                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 bg-white"
-                        />
-                        <span className="font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded text-xs">
-                          {designConfig.hero.ctaColor || storePrimaryColor}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Hero Image */}
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">صورة الواجهة (اختياري - ≤ 1MB):</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        placeholder="اتركه فارغاً لاستخدام صور المنتج الرئيسية"
-                        value={designConfig.hero.heroImageUrl || ''}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          hero: { ...designConfig.hero, heroImageUrl: e.target.value }
-                        })}
-                        dir="ltr"
-                        className="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-mono"
-                      />
-                      <input
-                        type="file"
-                        ref={heroFileInputRef}
-                        accept="image/*"
-                        onChange={handleHeroFileSelect}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        disabled={isUploadingHero}
-                        onClick={() => heroFileInputRef.current?.click()}
-                        className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        {isUploadingHero ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                        <span>رفع</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* SECTION 2: SCARCITY & LIVE VIEWERS KICKER */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <Flame className="w-4 h-4 text-amber-600" />
-                  <h3 className="font-bold text-sm text-slate-900">2. شريط ندرة المخزون والزوار (Scarcity Banner)</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDesignConfig({
-                    ...designConfig,
-                    scarcity: {
-                      enabled: designConfig.scarcity ? !designConfig.scarcity.enabled : false,
-                      stockText: designConfig.scarcity?.stockText || 'طلب مرتفع اليوم بالمغرب: بقي فقط {stock} قطع بالمستودع',
-                      viewersText: designConfig.scarcity?.viewersText || '{count} زائر يتصفحون هذا العرض حالياً'
-                    }
-                  })}
-                  className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    (designConfig.scarcity?.enabled ?? true)
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-slate-100 text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  {(designConfig.scarcity?.enabled ?? true) ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  <span>{(designConfig.scarcity?.enabled ?? true) ? 'مفعل (ظاهر)' : 'معطل (مخفي)'}</span>
-                </button>
-              </div>
-
-              {(designConfig.scarcity?.enabled ?? true) && (
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">نص ندرة المخزون (استخدم {'{stock}'} لعرض الكمية المتبقية):</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.scarcity?.stockText, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        scarcity: {
-                          enabled: true,
-                          stockText: updateFieldVal(designConfig.scarcity?.stockText, cmsLang, e.target.value),
-                          viewersText: designConfig.scarcity?.viewersText || ''
-                        }
-                      })}
-                      placeholder="اتركه فارغاً لإخفاء سطر المخزون"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">نص عدد الزوار النشطين (استخدم {'{count}'} للعدد التفاعلي):</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.scarcity?.viewersText, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        scarcity: {
-                          enabled: true,
-                          stockText: designConfig.scarcity?.stockText || '',
-                          viewersText: updateFieldVal(designConfig.scarcity?.viewersText, cmsLang, e.target.value)
-                        }
-                      })}
-                      placeholder="اتركه فارغاً لإخفاء سطر الزوار"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* SECTION 3: FEATURES */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-600" />
-                  <h3 className="font-bold text-sm text-slate-900">3. قسم المميزات والمواصفات (Features Section)</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDesignConfig({
-                    ...designConfig,
-                    features: { ...designConfig.features, enabled: !designConfig.features.enabled }
-                  })}
-                  className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    designConfig.features.enabled
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-slate-100 text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  {designConfig.features.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  <span>{designConfig.features.enabled ? 'مفعل (ظاهر)' : 'معطل (مخفي)'}</span>
-                </button>
-              </div>
-
-              {designConfig.features.enabled && (
-                <div className="space-y-4 text-xs">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">عنوان القسم:</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.features.title, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        features: { ...designConfig.features, title: updateFieldVal(designConfig.features.title, cmsLang, e.target.value) }
-                      })}
-                      placeholder="أهم المميزات والمواصفات"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold"
-                    />
-                  </div>
-
-                  {/* Features List */}
-                  <div className="space-y-2">
-                    <label className="font-bold text-slate-700 block">نقاط المميزات ({designConfig.features.items.length}):</label>
-                    {designConfig.features.items.map((feat, idx) => (
-                      <div key={feat.id || idx} className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center shrink-0 text-[10px]">
-                          {idx + 1}
-                        </span>
-                        <input
-                          type="text"
-                          value={getFieldVal(feat.title, cmsLang)}
-                          onChange={(e) => {
-                            const newItems = [...designConfig.features.items];
-                            newItems[idx] = { ...newItems[idx], title: updateFieldVal(newItems[idx].title, cmsLang, e.target.value) };
-                            setDesignConfig({
-                              ...designConfig,
-                              features: { ...designConfig.features, items: newItems }
-                            });
-                          }}
-                          className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newItems = designConfig.features.items.filter((_, i) => i !== idx);
-                            setDesignConfig({
-                              ...designConfig,
-                              features: { ...designConfig.features, items: newItems }
-                            });
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newItems = [
-                          ...designConfig.features.items,
-                          { id: `f-${Date.now()}`, title: 'ميزة جديدة حصرية' }
-                        ];
-                        setDesignConfig({
-                          ...designConfig,
-                          features: { ...designConfig.features, items: newItems }
-                        });
-                      }}
-                      className="mt-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer text-xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>إضافة ميزة جديدة</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* SECTION 4: TESTIMONIALS */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <Star className="w-4 h-4 text-emerald-600" />
-                  <h3 className="font-bold text-sm text-slate-900">4. قسم آراء وتقييمات الزبائن (Testimonials Section)</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDesignConfig({
-                    ...designConfig,
-                    testimonials: { ...designConfig.testimonials, enabled: !designConfig.testimonials.enabled }
-                  })}
-                  className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    designConfig.testimonials.enabled
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-slate-100 text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  {designConfig.testimonials.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  <span>{designConfig.testimonials.enabled ? 'مفعل (ظاهر)' : 'معطل (مخفي)'}</span>
-                </button>
-              </div>
-
-              {designConfig.testimonials.enabled && (
-                <div className="space-y-4 text-xs">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">عنوان قسم التقييمات:</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.testimonials.title, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        testimonials: { ...designConfig.testimonials, title: updateFieldVal(designConfig.testimonials.title, cmsLang, e.target.value) }
-                      })}
-                      placeholder="آراء وتقييمات زبنائنا في المغرب"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">شارة المشتري المؤكد:</label>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.testimonials.verifiedBadgeText, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          testimonials: { ...designConfig.testimonials, verifiedBadgeText: updateFieldVal(designConfig.testimonials.verifiedBadgeText, cmsLang, e.target.value) }
-                        })}
-                        placeholder="اتركه فارغاً لإخفاء الشارة"
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">ملاحظة التقييمات الموثقة:</label>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.testimonials.ratingNoteText, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          testimonials: { ...designConfig.testimonials, ratingNoteText: updateFieldVal(designConfig.testimonials.ratingNoteText, cmsLang, e.target.value) }
-                        })}
-                        placeholder="اتركه فارغاً لإخفاء الملاحظة"
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Testimonials Cards */}
-                  <div className="space-y-3">
-                    {designConfig.testimonials.items.map((item, idx) => (
-                      <div key={item.id || idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-800">تقييم #{idx + 1}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newItems = designConfig.testimonials.items.filter((_, i) => i !== idx);
-                              setDesignConfig({
-                                ...designConfig,
-                                testimonials: { ...designConfig.testimonials, items: newItems }
-                              });
-                            }}
-                            className="text-rose-600 hover:text-rose-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>حذف</span>
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="text"
-                            value={getFieldVal(item.name, cmsLang)}
-                            onChange={(e) => {
-                              const newItems = [...designConfig.testimonials.items];
-                              newItems[idx] = { ...newItems[idx], name: updateFieldVal(newItems[idx].name, cmsLang, e.target.value) };
-                              setDesignConfig({
-                                ...designConfig,
-                                testimonials: { ...designConfig.testimonials, items: newItems }
-                              });
-                            }}
-                            placeholder="اسم الزبون"
-                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
-                          />
-                          <input
-                            type="text"
-                            value={getFieldVal(item.city, cmsLang)}
-                            onChange={(e) => {
-                              const newItems = [...designConfig.testimonials.items];
-                              newItems[idx] = { ...newItems[idx], city: updateFieldVal(newItems[idx].city, cmsLang, e.target.value) };
-                              setDesignConfig({
-                                ...designConfig,
-                                testimonials: { ...designConfig.testimonials, items: newItems }
-                              });
-                            }}
-                            placeholder="المدينة (الدار البيضاء، الرباط...)"
-                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
-                          />
-                        </div>
-
-                        <textarea
-                          rows={2}
-                          value={getFieldVal(item.comment, cmsLang)}
-                          onChange={(e) => {
-                            const newItems = [...designConfig.testimonials.items];
-                            newItems[idx] = { ...newItems[idx], comment: updateFieldVal(newItems[idx].comment, cmsLang, e.target.value) };
-                            setDesignConfig({
-                              ...designConfig,
-                              testimonials: { ...designConfig.testimonials, items: newItems }
-                            });
-                          }}
-                          placeholder="نص تعليق ورأي الزبون في المنتج..."
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
-                        />
-                      </div>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newItems = [
-                          ...designConfig.testimonials.items,
-                          {
-                            id: `t-${Date.now()}`,
-                            name: 'زبون جديد',
-                            city: 'مراكش',
-                            rating: 5,
-                            comment: 'تجربة ممتازة وتعامل احترافي جداً!'
-                          }
-                        ];
-                        setDesignConfig({
-                          ...designConfig,
-                          testimonials: { ...designConfig.testimonials, items: newItems }
-                        });
-                      }}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer text-xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>إضافة تقييم زبون</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* SECTION 5: GUARANTEE */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <h3 className="font-bold text-sm text-slate-900">5. قسم الضمان وثقة الزبون (Guarantee Section)</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDesignConfig({
-                    ...designConfig,
-                    guarantee: { ...designConfig.guarantee, enabled: !designConfig.guarantee.enabled }
-                  })}
-                  className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    designConfig.guarantee.enabled
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-slate-100 text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  {designConfig.guarantee.enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  <span>{designConfig.guarantee.enabled ? 'مفعل (ظاهر)' : 'معطل (مخفي)'}</span>
-                </button>
-              </div>
-
-              {designConfig.guarantee.enabled && (
-                <div className="space-y-3 text-xs">
-                  <p className="text-[11px] text-slate-500">
-                    إذا مسحت العنوان والوصف، سيختفي صندوق الضمان كلياً من الصفحة.
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">عنوان الضمان:</label>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.guarantee.title, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          guarantee: { ...designConfig.guarantee, title: updateFieldVal(designConfig.guarantee.title, cmsLang, e.target.value) }
-                        })}
-                        placeholder="ضمان الرضا والجودة في متجرنا"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">شارة الضمان (Badge Text):</label>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.guarantee.badgeText, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          guarantee: { ...designConfig.guarantee, badgeText: updateFieldVal(designConfig.guarantee.badgeText, cmsLang, e.target.value) }
-                        })}
-                        placeholder="ضمان ذهبي 100% (اتركه فارغاً لإخفائه)"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">تفاصيل الضمان وسياسة المعاينة قبل الدفع:</label>
-                    <textarea
-                      rows={2}
-                      value={getFieldVal(designConfig.guarantee.description, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        guarantee: { ...designConfig.guarantee, description: updateFieldVal(designConfig.guarantee.description, cmsLang, e.target.value) }
-                      })}
-                      placeholder="نوفر لكم إمكانية المعاينة قبل الدفع..."
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs leading-relaxed"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* SECTION 6: REASSURANCES BULLETS */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <h3 className="font-bold text-sm text-slate-900">6. نقاط الطمأنينة بجانب السعر (Reassurances Bullets)</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDesignConfig({
-                    ...designConfig,
-                    reassurances: {
-                      enabled: designConfig.reassurances ? !designConfig.reassurances.enabled : false,
-                      items: designConfig.reassurances?.items || [
-                        'الدفع عند الاستلام نقداً بعد فحص السلعة',
-                        'شحن سريع لجميع مدن المغرب خلال 24 إلى 48 ساعة',
-                        'ضمان الرضا أو الاسترجاع والاستبدال خلال 14 يوماً'
-                      ]
-                    }
-                  })}
-                  className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    (designConfig.reassurances?.enabled ?? true)
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-slate-100 text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  {(designConfig.reassurances?.enabled ?? true) ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  <span>{(designConfig.reassurances?.enabled ?? true) ? 'مفعل (ظاهر)' : 'معطل (مخفي)'}</span>
-                </button>
-              </div>
-
-              {(designConfig.reassurances?.enabled ?? true) && (
-                <div className="space-y-2 text-xs">
-                  <p className="text-[11px] text-slate-500">
-                    تظهر هذه النقاط أسفل السعر في العمود الأيمن لتعزيز ثقة الزبون. اترك أي نقطة فارغة لإخفائها.
-                  </p>
-                  {(designConfig.reassurances?.items || [
-                    'الدفع عند الاستلام نقداً بعد فحص السلعة',
-                    'شحن سريع لجميع مدن المغرب خلال 24 إلى 48 ساعة',
-                    'ضمان الرضا أو الاسترجاع والاستبدال خلال 14 يوماً'
-                  ]).map((point, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <span className="font-bold text-slate-500 w-4">{idx + 1}.</span>
-                      <input
-                        type="text"
-                        value={getFieldVal(point, cmsLang)}
-                        onChange={(e) => {
-                          const current = designConfig.reassurances?.items || [
-                            'الدفع عند الاستلام نقداً بعد فحص السلعة',
-                            'شحن سريع لجميع مدن المغرب خلال 24 إلى 48 ساعة',
-                            'ضمان الرضا أو الاسترجاع والاستبدال خلال 14 يوماً'
-                          ];
-                          const updated = [...current];
-                          updated[idx] = updateFieldVal(updated[idx], cmsLang, e.target.value);
-                          setDesignConfig({
-                            ...designConfig,
-                            reassurances: { enabled: true, items: updated }
-                          });
-                        }}
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* SECTION 7: MOROCCAN ORDER FORM & CTA CUSTOMIZATION */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                <span>7. استمارة الطلب وزر التأكيد (COD Order Form & Badges)</span>
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                خصص نصوص شريط الاستمارة، زر الإرسال، شارات التوصيل والضمان. أي نص تتركه فارغاً سيختفي كلياً من الاستمارة.
-              </p>
-
-              <div className="space-y-4 text-xs">
-                {/* Form Header */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="font-bold text-slate-800 block">عنوان ووصف رأس الاستمارة:</span>
-                  <input
-                    type="text"
-                    value={getFieldVal(designConfig.orderForm?.title, cmsLang)}
-                    onChange={(e) => setDesignConfig({
-                      ...designConfig,
-                      orderForm: { ...designConfig.orderForm, enabled: true, title: updateFieldVal(designConfig.orderForm?.title, cmsLang, e.target.value) }
-                    })}
-                    placeholder="عنوان الاستمارة (اتركه فارغاً لإخفاء الشريط العلوي كلياً)"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold"
-                  />
-                  <input
-                    type="text"
-                    value={getFieldVal(designConfig.orderForm?.subtitle, cmsLang)}
-                    onChange={(e) => setDesignConfig({
-                      ...designConfig,
-                      orderForm: { ...designConfig.orderForm, enabled: true, subtitle: updateFieldVal(designConfig.orderForm?.subtitle, cmsLang, e.target.value) }
-                    })}
-                    placeholder="الوصف التوضيحي للاستمارة"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white"
-                  />
-                </div>
-
-                {/* Submit Button CMS */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <span className="font-bold text-slate-800 block">زر إرسال الطلب الكبير (Submit CTA Button):</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.orderForm?.submitButtonText, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        orderForm: { ...designConfig.orderForm, enabled: true, submitButtonText: updateFieldVal(designConfig.orderForm?.submitButtonText, cmsLang, e.target.value) }
-                      })}
-                      placeholder="نص زر الطلب"
-                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-black"
-                    />
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-600 font-bold">لون الزر:</span>
-                      <input
-                        type="color"
-                        value={designConfig.orderForm?.submitButtonColor || storePrimaryColor}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          orderForm: { ...designConfig.orderForm, enabled: true, submitButtonColor: e.target.value }
-                        })}
-                        className="w-7 h-7 rounded-lg cursor-pointer border border-slate-200 bg-white"
-                      />
-                      <span className="font-mono text-slate-500 bg-white px-2 py-0.5 rounded text-xs">
-                        {designConfig.orderForm?.submitButtonColor || storePrimaryColor}
-                      </span>
-                    </div>
-                  </div>
-                  <input
-                    type="text"
-                    value={getFieldVal(designConfig.orderForm?.submitButtonSubtext, cmsLang)}
-                    onChange={(e) => setDesignConfig({
-                      ...designConfig,
-                      orderForm: { ...designConfig.orderForm, enabled: true, submitButtonSubtext: updateFieldVal(designConfig.orderForm?.submitButtonSubtext, cmsLang, e.target.value) }
-                    })}
-                    placeholder="النص الفرعي للزر (اتركه فارغاً لإخفائه)"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600"
-                  />
-                </div>
-
-                {/* Micro-copy Notices */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">ملاحظة التوصيل المجاني:</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.orderForm?.freeShippingText, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        orderForm: { ...designConfig.orderForm, enabled: true, freeShippingText: updateFieldVal(designConfig.orderForm?.freeShippingText, cmsLang, e.target.value) }
-                      })}
-                      placeholder="اتركه فارغاً لإخفائه"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">ملاحظة تأكيد الهاتف:</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.orderForm?.callConfirmationText, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        orderForm: { ...designConfig.orderForm, enabled: true, callConfirmationText: updateFieldVal(designConfig.orderForm?.callConfirmationText, cmsLang, e.target.value) }
-                      })}
-                      placeholder="اتركه فارغاً لإخفائه"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50"
-                    />
-                  </div>
-                </div>
-
-                {/* Bottom Trust Badges */}
-                <div className="space-y-2 pt-2 border-t border-slate-100">
-                  <span className="font-bold text-slate-800 block">شارات الثقة الثلاث أسفل الاستمارة:</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {/* Badge 1 */}
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-500">الشارة 1 (التوصيل):</span>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.orderForm?.trustBadge1Title, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          orderForm: { ...designConfig.orderForm, enabled: true, trustBadge1Title: updateFieldVal(designConfig.orderForm?.trustBadge1Title, cmsLang, e.target.value) }
-                        })}
-                        placeholder="العنوان"
-                        className="w-full px-2 py-1 rounded bg-white border border-slate-200 text-xs font-bold"
-                      />
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.orderForm?.trustBadge1Sub, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          orderForm: { ...designConfig.orderForm, enabled: true, trustBadge1Sub: updateFieldVal(designConfig.orderForm?.trustBadge1Sub, cmsLang, e.target.value) }
-                        })}
-                        placeholder="الوصف"
-                        className="w-full px-2 py-1 rounded bg-white border border-slate-200 text-[10px]"
-                      />
-                    </div>
-
-                    {/* Badge 2 */}
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-500">الشارة 2 (الدفع):</span>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.orderForm?.trustBadge2Title, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          orderForm: { ...designConfig.orderForm, enabled: true, trustBadge2Title: updateFieldVal(designConfig.orderForm?.trustBadge2Title, cmsLang, e.target.value) }
-                        })}
-                        placeholder="العنوان"
-                        className="w-full px-2 py-1 rounded bg-white border border-slate-200 text-xs font-bold"
-                      />
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.orderForm?.trustBadge2Sub, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          orderForm: { ...designConfig.orderForm, enabled: true, trustBadge2Sub: updateFieldVal(designConfig.orderForm?.trustBadge2Sub, cmsLang, e.target.value) }
-                        })}
-                        placeholder="الوصف"
-                        className="w-full px-2 py-1 rounded bg-white border border-slate-200 text-[10px]"
-                      />
-                    </div>
-
-                    {/* Badge 3 */}
-                    <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-500">الشارة 3 (الضمان):</span>
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.orderForm?.trustBadge3Title, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          orderForm: { ...designConfig.orderForm, enabled: true, trustBadge3Title: updateFieldVal(designConfig.orderForm?.trustBadge3Title, cmsLang, e.target.value) }
-                        })}
-                        placeholder="العنوان"
-                        className="w-full px-2 py-1 rounded bg-white border border-slate-200 text-xs font-bold"
-                      />
-                      <input
-                        type="text"
-                        value={getFieldVal(designConfig.orderForm?.trustBadge3Sub, cmsLang)}
-                        onChange={(e) => setDesignConfig({
-                          ...designConfig,
-                          orderForm: { ...designConfig.orderForm, enabled: true, trustBadge3Sub: updateFieldVal(designConfig.orderForm?.trustBadge3Sub, cmsLang, e.target.value) }
-                        })}
-                        placeholder="الوصف"
-                        className="w-full px-2 py-1 rounded bg-white border border-slate-200 text-[10px]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* SECTION 8: STICKY MOBILE CTA & FOOTER */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-emerald-600" />
-                <span>8. زر الهاتف العائم وتذييل الصفحة (Sticky CTA & Footer)</span>
-              </h3>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">نص زر الشراء العائم بالهاتف (Mobile Sticky Button):</label>
-                  <input
-                    type="text"
-                    value={getFieldVal(designConfig.stickyMobileCtaText, cmsLang)}
-                    onChange={(e) => setDesignConfig({ ...designConfig, stickyMobileCtaText: updateFieldVal(designConfig.stickyMobileCtaText, cmsLang, e.target.value) })}
-                    placeholder="اطلب الآن - الدفع عند الاستلام (اتركه فارغاً لإخفائه)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-bold"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">نص تذييل صفحة الهبوط:</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.footer?.text, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        footer: {
-                          enabled: true,
-                          text: updateFieldVal(designConfig.footer?.text, cmsLang, e.target.value),
-                          copyrightText: designConfig.footer?.copyrightText || ''
-                        }
-                      })}
-                      placeholder="متجر مغربي موثوق يوفر تجربة تسوق مريحة..."
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">حقوق النشر (Copyright):</label>
-                    <input
-                      type="text"
-                      value={getFieldVal(designConfig.footer?.copyrightText, cmsLang)}
-                      onChange={(e) => setDesignConfig({
-                        ...designConfig,
-                        footer: {
-                          enabled: true,
-                          text: designConfig.footer?.text || '',
-                          copyrightText: updateFieldVal(designConfig.footer?.copyrightText, cmsLang, e.target.value)
-                        }
-                      })}
-                      placeholder="جميع الحقوق محفوظة"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Save Button */}
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={handleSaveLandingDesign}
-                disabled={isSaving}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>حفظ محتوى وأقسام صفحة الهبوط بالكامل (Save Landing CMS)</span>
+              <button onClick={() => setIsAddBlockModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
               </button>
             </div>
-          </div>
 
-          {/* Real-time Preview Drawer (lg:col-span-5) */}
-          <div className="lg:col-span-5 sticky top-20 space-y-4">
-            <div className="bg-slate-900 text-white p-3 rounded-2xl text-xs flex items-center justify-between">
-              <span className="font-bold flex items-center gap-1.5">
-                <Eye className="w-4 h-4 text-emerald-400" />
-                <span>معاينة حية لصفحة الهبوط (Live Sections Preview)</span>
-              </span>
-              <span className="text-[10px] text-emerald-400 font-mono">Real-time</span>
-            </div>
+            <p className="text-xs text-slate-500">
+              اختر نوع البلوك الذي ترغب في إضافته إلى صفحة الهبوط. يمكنك إعادة ترتيبه وتخصيص محتواه في أي وقت:
+            </p>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 space-y-4 max-h-[750px] overflow-y-auto">
-              {/* Header Preview */}
-              {(() => {
-                const headerCta = getLocalizedText(designConfig.headerCtaText, cmsLang);
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[60vh] overflow-y-auto p-1">
+              {AVAILABLE_BLOCK_TYPES.map((b) => {
+                const IconComponent = b.icon;
                 return (
-                  <div className="p-2 border-b border-slate-200 flex items-center justify-between">
-                    <span className="font-black text-slate-800 text-sm">{activeStore?.name || 'Allio'}</span>
-                    {headerCta?.trim() && (
-                      <span 
-                        className="text-[10px] text-white font-bold px-2.5 py-1 rounded-lg"
-                        style={{ backgroundColor: designConfig.headerCtaColor || storePrimaryColor }}
-                      >
-                        {headerCta}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Hero Preview */}
-              {(() => {
-                const pHeroHeadline = getLocalizedText(designConfig.hero.headline, cmsLang) || getLocalizedText(activeProduct?.name, cmsLang);
-                const pHeroBadge = getLocalizedText(designConfig.hero.badgeText, cmsLang);
-                const pHeroSub = getLocalizedText(designConfig.hero.subheadline, cmsLang);
-                const pHeroCta = getLocalizedText(designConfig.hero.ctaText, cmsLang);
-
-                if (designConfig.hero.enabled && Boolean(pHeroHeadline?.trim() || pHeroBadge?.trim() || pHeroCta?.trim())) {
-                  return (
-                    <div 
-                      className="rounded-xl p-4 text-white text-center space-y-2 transition-all shadow-xs"
-                      style={{ backgroundColor: storeSecondaryColor }}
-                    >
-                      {pHeroBadge?.trim() && (
-                        <span 
-                          className="inline-block text-[10px] font-black px-2 py-0.5 rounded-full"
-                          style={{ backgroundColor: designConfig.hero.ctaColor || storePrimaryColor }}
-                        >
-                          {pHeroBadge}
-                        </span>
-                      )}
-                      <h4 className="font-black text-sm">{pHeroHeadline}</h4>
-                      {pHeroSub?.trim() && (
-                        <p className="text-[10px] text-slate-300">{pHeroSub}</p>
-                      )}
-                      {pHeroCta?.trim() && (
-                        <span 
-                          className="inline-block text-xs font-black px-4 py-1.5 rounded-lg text-white shadow-xs"
-                          style={{ backgroundColor: designConfig.hero.ctaColor || storePrimaryColor }}
-                        >
-                          {pHeroCta}
-                        </span>
-                      )}
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="p-2 text-center text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                    قسم الواجهة التسويقية (Hero) مخفي حالياً
-                  </div>
-                );
-              })()}
-
-              {/* Scarcity Banner Preview */}
-              {(() => {
-                const rawStock = getLocalizedText(designConfig.scarcity?.stockText, cmsLang);
-                const rawViewers = getLocalizedText(designConfig.scarcity?.viewersText, cmsLang);
-                const stockTxt = rawStock ? rawStock.replace('{stock}', String(activeProduct?.stockCount || 5)) : 'طلب مرتفع: بقي 5 قطع';
-                const viewersTxt = rawViewers ? rawViewers.replace('{count}', '18') : '18 زائر يتصفحون الآن';
-
-                if ((designConfig.scarcity?.enabled ?? true) && Boolean(rawStock?.trim() || rawViewers?.trim())) {
-                  return (
-                    <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-900 flex items-center justify-between">
-                      <span className="font-bold">{stockTxt}</span>
-                      <span className="text-slate-500">{viewersTxt}</span>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="p-2 text-center text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                    شريط ندرة المخزون والزوار مخفي
-                  </div>
-                );
-              })()}
-
-              {/* Features Preview */}
-              {designConfig.features.enabled && designConfig.features.items.length > 0 ? (
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
-                  <h5 className="font-bold text-slate-900">{getLocalizedText(designConfig.features.title, cmsLang) || 'المميزات:'}</h5>
-                  {designConfig.features.items.map((f, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-[11px] text-slate-700">
-                      <Check className="w-3 h-3 text-emerald-600" />
-                      <span>{getLocalizedText(f.title, cmsLang)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-2 text-center text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                  قسم المميزات (Features) مخفي حالياً
-                </div>
-              )}
-
-              {/* Testimonials Preview */}
-              {designConfig.testimonials.enabled && designConfig.testimonials.items.length > 0 ? (
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
-                  <h5 className="font-bold text-slate-900">{getLocalizedText(designConfig.testimonials.title, cmsLang) || 'التقييمات:'}</h5>
-                  <div className="text-[11px] text-slate-600 space-y-1">
-                    {designConfig.testimonials.items.slice(0, 2).map((t, i) => (
-                      <div key={i} className="bg-white p-1.5 rounded border border-slate-100 flex items-center justify-between">
-                        <span><strong>{getLocalizedText(t.name, cmsLang)}</strong> ({getLocalizedText(t.city, cmsLang)}): &quot;{getLocalizedText(t.comment, cmsLang)}&quot;</span>
-                        <span className="text-[10px] font-bold text-emerald-700">
-                          {getLocalizedText(designConfig.testimonials.verifiedBadgeText, cmsLang) || 'مشتري مؤكد ✓'}
-                        </span>
+                  <button
+                    key={b.type}
+                    type="button"
+                    onClick={() => handleAddNewBlock(b.type)}
+                    className="p-3 rounded-2xl border border-slate-200 bg-white hover:border-emerald-500 hover:bg-emerald-50/40 text-start space-y-1 transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                        <IconComponent className="w-3.5 h-3.5" />
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-2 text-center text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                  قسم التقييمات (Testimonials) مخفي حالياً
-                </div>
-              )}
-
-              {/* Guarantee Preview */}
-              {(() => {
-                const gTitle = getLocalizedText(designConfig.guarantee.title, cmsLang);
-                const gDesc = getLocalizedText(designConfig.guarantee.description, cmsLang);
-                const gBadge = getLocalizedText(designConfig.guarantee.badgeText, cmsLang);
-
-                if (designConfig.guarantee.enabled && Boolean(gTitle?.trim() || gDesc?.trim())) {
-                  return (
-                    <div 
-                      className="p-3 rounded-xl border text-xs space-y-1"
-                      style={{ backgroundColor: `${storePrimaryColor}08`, borderColor: `${storePrimaryColor}30` }}
-                    >
-                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                        <ShieldCheck className="w-3.5 h-3.5" style={{ color: storePrimaryColor }} />
-                        {gTitle?.trim() && <span>{gTitle}</span>}
-                        {gBadge?.trim() && (
-                          <span 
-                            className="text-[9px] text-white px-1.5 py-0.2 rounded font-bold mr-auto"
-                            style={{ backgroundColor: storePrimaryColor }}
-                          >
-                            {gBadge}
-                          </span>
-                        )}
-                      </div>
-                      {gDesc?.trim() && (
-                        <p className="text-[10px] text-slate-600">{gDesc}</p>
-                      )}
+                      <span className="font-bold text-xs text-slate-900 line-clamp-1">{b.label}</span>
                     </div>
-                  );
-                }
-
-                return (
-                  <div className="p-2 text-center text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                    قسم الضمان (Guarantee) مخفي حالياً
-                  </div>
+                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">{b.desc}</p>
+                  </button>
                 );
-              })()}
-
-              {/* Order Form Button & Badges Preview */}
-              {(() => {
-                const formTitle = getLocalizedText(designConfig.orderForm?.title, cmsLang);
-                const submitBtn = getLocalizedText(designConfig.orderForm?.submitButtonText, cmsLang) || 'اضغط هنا للطلب الآن';
-                const submitSub = getLocalizedText(designConfig.orderForm?.submitButtonSubtext, cmsLang);
-
-                return (
-                  <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 space-y-2">
-                    {formTitle?.trim() && (
-                      <div className="p-1.5 rounded text-center text-white text-[10px] font-bold" style={{ backgroundColor: storeSecondaryColor }}>
-                        {formTitle}
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      className="w-full py-2 rounded-lg text-white font-black text-xs shadow-xs"
-                      style={{ backgroundColor: designConfig.orderForm?.submitButtonColor || storePrimaryColor }}
-                    >
-                      {submitBtn}
-                    </button>
-                    {submitSub?.trim() && (
-                      <p className="text-[9px] text-center text-slate-500">{submitSub}</p>
-                    )}
-                  </div>
-                );
-              })()}
+              })}
             </div>
           </div>
         </div>

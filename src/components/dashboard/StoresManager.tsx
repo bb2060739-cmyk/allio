@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Store, Product } from '../../types';
 import { saveStore, deleteStore } from '../../lib/storage';
+import { getLocalizedText } from '../../utils/i18n';
 import { 
   Store as StoreIcon, Plus, Edit3, Trash2, ExternalLink, 
-  Palette, Layers, Check, ShieldAlert, Sparkles, X, Loader2
+  Palette, Layers, Check, ShieldAlert, Sparkles, X, Loader2,
+  Upload, Image as ImageIcon
 } from 'lucide-react';
+import { validateImageFile, processAndCompressImage, MAX_IMAGE_SIZE_MB } from '../../lib/imageOptimization';
 
 interface StoresManagerProps {
   stores: Store[];
@@ -37,7 +40,12 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
   const [secondaryColor, setSecondaryColor] = useState('#0f172a');
   const [logoText, setLogoText] = useState('Allio');
   const [logoImageUrl, setLogoImageUrl] = useState('');
+  const [faviconUrl, setFaviconUrl] = useState('');
+  const [announcementText, setAnnouncementText] = useState('');
   const [logoType, setLogoType] = useState<'text' | 'image'>('text');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const handleOpenCreate = () => {
     setEditingStore(null);
@@ -49,7 +57,10 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
     setSecondaryColor('#0f172a');
     setLogoText('Allio');
     setLogoImageUrl('');
+    setFaviconUrl('');
+    setAnnouncementText('توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام');
     setLogoType('text');
+    setUploadError(null);
     setIsModalOpen(true);
   };
 
@@ -63,8 +74,37 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
     setSecondaryColor(store.design?.secondaryColor || '#0f172a');
     setLogoText(store.design?.logoText || store.name);
     setLogoImageUrl(store.design?.logoImageUrl || '');
-    setLogoType(store.design?.logoType || 'text');
+    setFaviconUrl(store.design?.faviconUrl || store.design?.logoImageUrl || '');
+    setAnnouncementText(typeof store.design?.announcementText === 'string' ? store.design.announcementText : getLocalizedText(store.design?.announcementText));
+    setLogoType(store.design?.logoType || (store.design?.logoImageUrl ? 'image' : 'text'));
+    setUploadError(null);
     setIsModalOpen(true);
+  };
+
+  const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadError(null);
+    const val = validateImageFile(file);
+    if (!val.valid) {
+      setUploadError(val.error || `حجم الصورة يتجاوز الحد الأقصى (${MAX_IMAGE_SIZE_MB} ميغابايت).`);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+      return;
+    }
+
+    try {
+      setIsUploadingLogo(true);
+      const { dataUrl } = await processAndCompressImage(file, 800);
+      setLogoImageUrl(dataUrl);
+      setFaviconUrl(dataUrl);
+      setLogoType('image');
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'فشل معالجة ورفع الشعار');
+    } finally {
+      setIsUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
   };
 
   const handleSaveStore = async (e: React.FormEvent) => {
@@ -87,17 +127,19 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
           secondaryColor,
           logoType,
           logoText: logoText.trim() || name.trim(),
-          logoImageUrl: logoImageUrl.trim()
+          logoImageUrl: logoImageUrl.trim(),
+          faviconUrl: (faviconUrl || logoImageUrl).trim(),
+          announcementText: announcementText.trim()
         }
       });
 
-      setStatusMessage({ type: 'success', text: `تم حفظ المتجر "${name}" بنجاح في قاعدة البيانات!` });
+      setStatusMessage({ type: 'success', text: `تم حفظ المتجر "${name}" بنجاح في قاعدة بيانات Firestore!` });
       onStoresChange();
       setIsModalOpen(false);
       setTimeout(() => setStatusMessage(null), 3000);
     } catch (err) {
       console.error('Failed to save store:', err);
-      setStatusMessage({ type: 'error', text: 'تعذر حفظ بيانات المتجر. يرجى المحاولة مجدداً.' });
+      setStatusMessage({ type: 'error', text: 'تعذر حفظ بيانات المتجر في Firestore. يرجى المحاولة مجدداً.' });
     } finally {
       setIsSaving(false);
     }
@@ -340,9 +382,9 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                 />
               </div>
 
-              {/* Quick Brand Style Initializer */}
+              {/* Brand Style & Logo/Favicon */}
               <div className="pt-2 border-t border-slate-100 space-y-3">
-                <span className="font-bold text-slate-700 block text-xs">الألوان والشعار المبدئي:</span>
+                <span className="font-bold text-slate-800 block text-xs">الهوية البصرية وشعار المتجر وأيقونة التبويب (Logo / Favicon):</span>
                 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -365,15 +407,134 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                   </div>
 
                   <div>
-                    <label className="text-slate-500 block mb-1">اسم الشعار (Logo Text):</label>
-                    <input
-                      type="text"
-                      value={logoText}
-                      onChange={(e) => setLogoText(e.target.value)}
-                      placeholder="Allio"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold"
-                    />
+                    <label className="text-slate-500 block mb-1">اللون الثانوي (Secondary):</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={secondaryColor}
+                        onChange={(e) => setSecondaryColor(e.target.value)}
+                        className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 p-0.5"
+                      />
+                      <input
+                        type="text"
+                        value={secondaryColor}
+                        onChange={(e) => setSecondaryColor(e.target.value)}
+                        dir="ltr"
+                        className="w-24 px-2 py-1 rounded-lg border border-slate-200 font-mono text-xs"
+                      />
+                    </div>
                   </div>
+                </div>
+
+                {/* Logo / Favicon Image Upload Section */}
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-700 block">شعار المتجر / أيقونة المتصفح (Logo & Favicon):</label>
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setLogoType('text')}
+                        className={`px-2 py-0.5 rounded font-bold cursor-pointer ${logoType === 'text' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}
+                      >
+                        نص
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogoType('image')}
+                        className={`px-2 py-0.5 rounded font-bold cursor-pointer ${logoType === 'image' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}
+                      >
+                        صورة / أيقونة
+                      </button>
+                    </div>
+                  </div>
+
+                  {uploadError && (
+                    <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-lg font-bold">
+                      {uploadError}
+                    </div>
+                  )}
+
+                  {logoType === 'text' ? (
+                    <div>
+                      <label className="text-[11px] text-slate-500 block mb-1">اسم الشعار النصي (Logo Text):</label>
+                      <input
+                        type="text"
+                        value={logoText}
+                        onChange={(e) => setLogoText(e.target.value)}
+                        placeholder="Allio"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        {logoImageUrl ? (
+                          <div className="w-12 h-12 rounded-xl border border-slate-200 bg-white p-1 flex items-center justify-center shrink-0 shadow-xs">
+                            <img src={logoImageUrl} alt="Logo" className="w-full h-full object-contain" />
+                          </div>
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
+                            <ImageIcon className="w-6 h-6" />
+                          </div>
+                        )}
+
+                        <div className="flex-1 flex gap-2">
+                          <input
+                            type="file"
+                            ref={logoInputRef}
+                            accept="image/*"
+                            onChange={handleLogoFileSelect}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            disabled={isUploadingLogo}
+                            onClick={() => logoInputRef.current?.click()}
+                            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isUploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                            <span>رفع صورة الشعار / الأيقونة</span>
+                          </button>
+                          {logoImageUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLogoImageUrl('');
+                                setFaviconUrl('');
+                              }}
+                              className="px-2.5 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold border border-rose-200 cursor-pointer"
+                            >
+                              إزالة
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <input
+                        type="url"
+                        placeholder="أو ضع رابط صورة الشعار مباشرة (URL)"
+                        value={logoImageUrl}
+                        onChange={(e) => {
+                          setLogoImageUrl(e.target.value);
+                          if (!faviconUrl) setFaviconUrl(e.target.value);
+                        }}
+                        dir="ltr"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-mono text-[11px]"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Announcement Bar Text */}
+                <div>
+                  <label className="text-slate-600 font-bold block mb-1 text-xs">شريط الإعلان أعلى المتجر (Announcement):</label>
+                  <input
+                    type="text"
+                    value={announcementText}
+                    onChange={(e) => setAnnouncementText(e.target.value)}
+                    placeholder="توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs"
+                  />
                 </div>
               </div>
 

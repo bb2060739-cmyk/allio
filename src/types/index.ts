@@ -164,7 +164,30 @@ export interface Product {
   views: number;
   salesCount: number;
   designConfig?: LandingPageDesignConfig;
+  blocks?: LayoutBlock[]; // JSON array of layout blocks for the Visual Block-Based Page Builder
 }
+
+export type LayoutBlockType = 
+  | 'hero' 
+  | 'scarcity'
+  | 'gallery' 
+  | 'features' 
+  | 'testimonials' 
+  | 'guarantee' 
+  | 'reassurances' 
+  | 'order_form' 
+  | 'footer'
+  | 'custom_text';
+
+export interface LayoutBlock {
+  id: string;
+  type: LayoutBlockType;
+  title?: string;
+  enabled: boolean;
+  data: Record<string, any>;
+}
+
+export type LandingPage = Product;
 
 export interface Order {
   id: string;

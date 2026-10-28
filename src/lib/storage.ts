@@ -1,5 +1,6 @@
-import { Product, Order, OrderStatus, DashboardStats, Store, LandingPageDesignConfig, LocalizedString } from '../types';
+import { Product, Order, OrderStatus, DashboardStats, Store, LandingPageDesignConfig, LocalizedString, LayoutBlock } from '../types';
 import { db, handleFirestoreError, OperationType } from './firebase';
+import { ensureAdminAuth } from './auth';
 import { 
   collection, 
   doc, 
@@ -135,6 +136,130 @@ export const getDefaultDesignConfig = (productName?: LocalizedString, fullDesc?:
   stickyMobileCtaText: 'اطلب الآن - الدفع عند الاستلام'
 });
 
+export const getDefaultLayoutBlocks = (
+  productName: string = '', 
+  desc: string = '', 
+  images: string[] = []
+): LayoutBlock[] => [
+  {
+    id: 'block-hero',
+    type: 'hero',
+    title: 'قسم الواجهة الترويجية (Hero Section)',
+    enabled: true,
+    data: {
+      badgeText: 'عرض حصري بالمغرب 🔥 توصيل سريع والدفع عند الاستلام',
+      headline: productName || 'منتج أصلي عالي الجودة متوفر الآن',
+      subheadline: desc || 'تخفيض استثنائي لمدة محدودة مع ضمان الجودة والتوصيل لكافة المدن المغربية.',
+      ctaText: 'اطلب الآن - الدفع عند الاستلام 🚚',
+      ctaColor: '#059669',
+      ctaTextColor: '#ffffff',
+      heroImageUrl: images[0] || ''
+    }
+  },
+  {
+    id: 'block-scarcity',
+    type: 'scarcity',
+    title: 'شريط ندرة المخزون والزوار (Scarcity Banner)',
+    enabled: true,
+    data: {
+      stockText: 'طلب مرتفع اليوم بالمغرب: بقي فقط {stock} قطع بالمستودع',
+      viewersText: '{count} زائر يتصفحون هذا العرض حالياً'
+    }
+  },
+  {
+    id: 'block-gallery',
+    type: 'gallery',
+    title: 'معرض صور المنتج (Product Gallery)',
+    enabled: true,
+    data: {
+      title: 'صور وتفاصيل المنتج بدقة عالية',
+      images: images.length > 0 ? images : [
+        'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
+      ]
+    }
+  },
+  {
+    id: 'block-features',
+    type: 'features',
+    title: 'أهم المميزات والمواصفات (Key Features)',
+    enabled: true,
+    data: {
+      title: 'أهم المميزات والمواصفات',
+      items: [
+        { id: 'f-1', title: 'جودة أصلية ومضمونة 100%' },
+        { id: 'f-2', title: 'توصيل سريع ومجاني حتى باب منزلك' },
+        { id: 'f-3', title: 'الدفع نقداً بعد فحص السلعة والتأكد منها' },
+        { id: 'f-4', title: 'ضمان الاستبدال أو الاسترجاع 14 يوماً' }
+      ]
+    }
+  },
+  {
+    id: 'block-testimonials',
+    type: 'testimonials',
+    title: 'آراء وتقييمات الزبائن (Customer Reviews)',
+    enabled: true,
+    data: {
+      title: 'آراء وتقييمات زبنائنا في المغرب',
+      verifiedBadgeText: 'مشتري مؤكد ✓',
+      ratingNoteText: '(تقييمات موثقة من زبائن حقيقيين)',
+      items: [
+        { id: 't-1', name: 'أمين البرنوصي', city: 'الدار البيضاء', rating: 5, comment: 'الصراحة جودة ممتازة والتوصيل كان في 24 ساعة. شكراً ليكم!' },
+        { id: 't-2', name: 'سناء بن جلون', city: 'الرباط', rating: 5, comment: 'منتج واعر بزاف مطابق تماماً للوصف. تعامل راقي وموزع مهذب.' },
+        { id: 't-3', name: 'يوسف مراكش', city: 'مراكش', rating: 5, comment: 'وصلني في وقت وجيز وفحصتو عاد خلصت. تبارك الله عليكم.' }
+      ]
+    }
+  },
+  {
+    id: 'block-guarantee',
+    type: 'guarantee',
+    title: 'الضمان وثقة المتجر (Money-Back Guarantee)',
+    enabled: true,
+    data: {
+      title: 'ضمان الرضا والجودة في متجرنا',
+      description: 'نوفر لكم إمكانية المعاينة قبل الدفع، مع ضمان استبدال أو استرجاع مجاني في حالة أي عيب مصنعي.',
+      badgeText: 'ضمان ذهبي 100%'
+    }
+  },
+  {
+    id: 'block-reassurances',
+    type: 'reassurances',
+    title: 'نقاط الطمأنينة والثقة (Trust Points)',
+    enabled: true,
+    data: {
+      items: [
+        'الدفع عند الاستلام نقداً بعد فحص السلعة',
+        'شحن سريع لجميع مدن المغرب خلال 24 إلى 48 ساعة',
+        'ضمان الرضا أو الاسترجاع والاستبدال خلال 14 يوماً'
+      ]
+    }
+  },
+  {
+    id: 'block-order-form',
+    type: 'order_form',
+    title: 'استمارة الطلب السريع والدفع عند الاستلام (COD Form)',
+    enabled: true,
+    data: {
+      title: 'استمارة الطلب السريع والدفع عند الاستلام',
+      subtitle: 'أدخل معلوماتك أدناه وسنتصل بك هاتفياً لتأكيد إرسال الطلبية إلى باب منزلك مجاناً',
+      submitButtonText: 'اضغط هنا للطلب الآن',
+      submitButtonSubtext: 'الدفع عند الاستلام بعد معاينة المنتج 📦 والتوصيل بالمجان',
+      submitButtonColor: '#059669',
+      freeShippingText: 'التوصيل مجاني 100% إلى جميع المدن المغربية المسجلة',
+      callConfirmationText: 'سنتصل بك لتأكيد الطلب'
+    }
+  },
+  {
+    id: 'block-footer',
+    type: 'footer',
+    title: 'تذييل الصفحة وحقوق النشر (Footer)',
+    enabled: true,
+    data: {
+      text: 'متجر مغربي موثوق يوفر تجربة تسوق مريحة وسريعة مع الدفع عند الاستلام.',
+      copyrightText: 'جميع الحقوق محفوظة'
+    }
+  }
+];
+
 export const safeLocalStorage = {
   getItem: (key: string): string | null => {
     try {
@@ -198,6 +323,7 @@ export const getStoreBySlug = (slug?: string): Store => {
 };
 
 export const saveStore = async (storeData: Partial<Store> & { name: string }): Promise<Store> => {
+  await ensureAdminAuth();
   const stores = getStores();
   const slug = storeData.slug || storeData.name.toLowerCase().trim()
     .replace(/[^\w\u0621-\u064A\s-]/g, '')
@@ -386,28 +512,39 @@ export const fetchMoreProducts = async (currentCount: number, batchSize: number 
   }
 };
 
-export const saveProduct = async (productData: Partial<Product> & { name: LocalizedString; price: number }): Promise<Product> => {
+export const saveProduct = async (productData: Partial<Product> & { name: LocalizedString; price: number; blocks?: LayoutBlock[] }): Promise<Product> => {
+  await ensureAdminAuth();
   const products = getProducts();
   const nameStr = getLocalizedText(productData.name, 'en') || getLocalizedText(productData.name, 'ar') || 'product';
   const slug = productData.slug || nameStr.toLowerCase().trim()
     .replace(/[^\w\u0621-\u064A\s-]/g, '')
     .replace(/\s+/g, '-');
 
+  const shortDescStr = typeof productData.shortDescription === 'string' ? productData.shortDescription : getLocalizedText(productData.shortDescription);
+  const fullDescStr = typeof productData.fullDescription === 'string' ? productData.fullDescription : getLocalizedText(productData.fullDescription);
+  const badgeStr = typeof productData.badge === 'string' ? productData.badge : getLocalizedText(productData.badge, 'ar', 'عرض حصري بالمغرب 🔥');
+
   let targetProduct: Product;
 
   if (productData.id && productData.id.trim()) {
-    // Update existing product
+    // Update existing product / landing page
     const existingId = productData.id.trim();
     const index = products.findIndex(p => p.id === existingId);
     const existing = index !== -1 ? products[index] : ({} as Product);
+    const existingBlocks = existing.blocks && existing.blocks.length > 0 ? existing.blocks : getDefaultLayoutBlocks(nameStr, shortDescStr, productData.images || existing.images || []);
+
     targetProduct = {
       ...existing,
       ...productData,
       id: existingId,
       storeId: productData.storeId !== undefined ? productData.storeId : (existing.storeId || 'store-default'),
       designConfig: productData.designConfig !== undefined ? productData.designConfig : (existing.designConfig || getDefaultDesignConfig(productData.name, productData.fullDescription)),
+      blocks: productData.blocks && productData.blocks.length > 0 ? productData.blocks : existingBlocks,
       slug: slug || existing.slug || 'product-' + Date.now(),
-      name: productData.name,
+      name: nameStr,
+      shortDescription: shortDescStr,
+      fullDescription: fullDescStr,
+      badge: badgeStr,
       price: Number(productData.price),
       updatedAt: new Date().toISOString()
     } as Product;
@@ -418,24 +555,35 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
       products.unshift(targetProduct);
     }
   } else {
-    // Create new product with a guaranteed unique document ID
-    const newId = 'prod-' + Date.now();
+    // Create new landing page / product with guaranteed unique document ID
+    const newId = 'page-' + Date.now();
+    const initImages = productData.images && productData.images.length > 0 ? productData.images : [
+      'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
+    ];
+    const initialBlocks = productData.blocks && productData.blocks.length > 0
+      ? productData.blocks
+      : getDefaultLayoutBlocks(nameStr, shortDescStr, initImages);
+
     targetProduct = {
       id: newId,
       storeId: productData.storeId || 'store-default',
-      designConfig: productData.designConfig || getDefaultDesignConfig(productData.name, productData.fullDescription),
+      designConfig: productData.designConfig || getDefaultDesignConfig(nameStr, fullDescStr),
+      blocks: initialBlocks,
       slug: slug || 'product-' + Date.now(),
-      name: productData.name,
+      name: nameStr,
       price: Number(productData.price),
       originalPrice: productData.originalPrice ? Number(productData.originalPrice) : undefined,
       currency: 'DH',
-      shortDescription: productData.shortDescription || '',
-      fullDescription: productData.fullDescription || '',
-      features: productData.features || [],
-      images: productData.images && productData.images.length > 0 ? productData.images : [
-        'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
+      shortDescription: shortDescStr || 'منتج عالي الجودة متوفر حصرياً مع خدمة الدفع عند الاستلام والتوصيل بالمجان.',
+      fullDescription: fullDescStr || 'مواصفات وتفاصيل المنتج الشاملة لضمان أفضل تجربة استخدام.',
+      features: productData.features || [
+        'جودة ممتازة معتمدة ومضمونة 100%',
+        'توصيل سريع إلى باب المنزل في جميع مدن المغرب',
+        'الدفع عند الاستلام بعد فحص المنتج والتأكد منه',
+        'ضمان الاستبدال أو الاسترجاع لمدة 14 يوماً'
       ],
-      badge: productData.badge || 'عرض حصري بالمغرب 🔥',
+      images: initImages,
+      badge: badgeStr || 'عرض حصري بالمغرب 🔥',
       freeShipping: productData.freeShipping !== false,
       inStock: true,
       stockCount: productData.stockCount || 15,
@@ -453,16 +601,25 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
   safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: targetProduct }));
+    window.dispatchEvent(new CustomEvent('allio_landing_pages_updated', { detail: targetProduct }));
     window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: targetProduct } }));
   }
 
-  // 2. Permanent Cloud Firestore Sync
+  // 2. Permanent Cloud Firestore Sync to BOTH 'products' and 'landing_pages' collections
   try {
     const productRef = doc(db, 'products', targetProduct.id);
     await setDoc(productRef, targetProduct);
     console.log(`[Firebase] Successfully saved product doc: products/${targetProduct.id}`);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `products/${targetProduct.id}`);
+  }
+
+  try {
+    const landingPageRef = doc(db, 'landing_pages', targetProduct.id);
+    await setDoc(landingPageRef, targetProduct);
+    console.log(`[Firebase] Successfully synced landing_page doc: landing_pages/${targetProduct.id}`);
+  } catch (lpErr) {
+    console.warn(`[Firebase landing_pages] Sync note:`, lpErr);
   }
 
   return targetProduct;
@@ -474,6 +631,7 @@ export const deleteProduct = async (id: string): Promise<boolean> => {
     return false;
   }
 
+  await ensureAdminAuth();
   const targetDocId = id.trim();
   console.log(`[Firebase Delete] Initiating deleteDoc for product with ID: "${targetDocId}"`);
 
@@ -484,6 +642,7 @@ export const deleteProduct = async (id: string): Promise<boolean> => {
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: filtered }));
+    window.dispatchEvent(new CustomEvent('allio_landing_pages_updated', { detail: filtered }));
     window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: filtered } }));
   }
 
@@ -497,6 +656,13 @@ export const deleteProduct = async (id: string): Promise<boolean> => {
   } catch (error) {
     console.error(`[Firebase Delete] Error executing deleteDoc on products/${targetDocId}:`, error);
     handleFirestoreError(error, OperationType.DELETE, `products/${targetDocId}`);
+  }
+
+  try {
+    const lpRef = doc(db, 'landing_pages', targetDocId);
+    await deleteDoc(lpRef);
+  } catch (lpErr) {
+    console.warn('[Firebase Delete] landing_pages doc note:', lpErr);
   }
 
   // 3. Fallback verification: Check if any document has field id == targetDocId or slug == targetDocId

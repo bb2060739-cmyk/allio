@@ -55,6 +55,17 @@ if (typeof window !== 'undefined') {
   }
 }
 
+export const ensureAdminAuth = async (): Promise<boolean> => {
+  if (auth.currentUser) return true;
+  try {
+    await signInAnonymously(auth);
+    return true;
+  } catch (err) {
+    console.warn('[Firebase Auth] ensureAdminAuth anonymous sign-in error:', err);
+    return false;
+  }
+};
+
 export const isAuthenticated = (): boolean => {
   try {
     const sessionToken = sessionStorage.getItem(AUTH_STORAGE_KEY);

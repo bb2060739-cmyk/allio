@@ -72,6 +72,7 @@ function AppContent() {
     };
 
     window.addEventListener('allio_products_updated', handleUpdate);
+    window.addEventListener('allio_landing_pages_updated', handleUpdate);
     window.addEventListener('allio_orders_updated', handleUpdate);
     window.addEventListener('allio_stores_updated', handleUpdate);
     window.addEventListener('allio_data_updated', handleUpdate);
@@ -80,6 +81,7 @@ function AppContent() {
 
     return () => {
       window.removeEventListener('allio_products_updated', handleUpdate);
+      window.removeEventListener('allio_landing_pages_updated', handleUpdate);
       window.removeEventListener('allio_orders_updated', handleUpdate);
       window.removeEventListener('allio_stores_updated', handleUpdate);
       window.removeEventListener('allio_data_updated', handleUpdate);

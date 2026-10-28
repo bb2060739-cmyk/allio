@@ -302,27 +302,28 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
               {/* Action Buttons Footer */}
               <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
                 <button
-                  onClick={() => onViewLandingPage(product)}
-                  className="flex-1 py-1.5 px-3 bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  onClick={() => onCustomizeDesign(product)}
+                  title="فتح محرر البلوكات المرئي وتعديل الأقسام والتصميم"
+                  className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>معاينة الصفحة</span>
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>تعديل الصفحة (Page Builder)</span>
                 </button>
 
                 <button
-                  onClick={() => onCustomizeDesign(product)}
-                  title="تخصيص التصميم والأقسام والمحتوى"
+                  onClick={() => onViewLandingPage(product)}
+                  title="معاينة الصفحة الحية كزبون"
                   className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50 transition-colors cursor-pointer"
                 >
-                  <Palette className="w-3.5 h-3.5" />
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </button>
 
                 <button
                   onClick={() => onEditProduct(product)}
-                  title="تعديل بيانات المنتج"
+                  title="تعديل بيانات السعر والمخزون والبيكسل"
                   className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-blue-200 transition-colors cursor-pointer"
                 >
-                  <Edit3 className="w-3.5 h-3.5" />
+                  <Palette className="w-3.5 h-3.5" />
                 </button>
 
                 <button
