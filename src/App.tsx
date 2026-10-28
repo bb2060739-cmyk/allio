@@ -8,7 +8,18 @@ import {
   Navigate 
 } from 'react-router-dom';
 import { Product, Order, Store, LocalizedString } from './types';
-import { getProducts, getOrders, getDashboardStats, saveProduct, initFirestoreRealtimeSync, getStores, fetchProductBySlug } from './lib/storage';
+import { 
+  getProducts, 
+  getOrders, 
+  getDashboardStats, 
+  saveProduct, 
+  initFirestoreRealtimeSync, 
+  getStores, 
+  fetchProductBySlug,
+  refreshLandingPagesFromFirestore,
+  refreshStoresFromFirestore,
+  refreshOrdersFromFirestore
+} from './lib/storage';
 import { isAuthenticated, getAdminUser, logoutAdmin } from './lib/auth';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { AdminLayout } from './components/admin/AdminLayout';
@@ -62,6 +73,11 @@ function AppContent() {
     // Initialize live Firestore sync across all devices
     initFirestoreRealtimeSync();
     refreshData();
+
+    // Proactively fetch and unblock existing data from Firestore collections
+    refreshLandingPagesFromFirestore().catch(() => {});
+    refreshStoresFromFirestore().catch(() => {});
+    refreshOrdersFromFirestore().catch(() => {});
 
     const handleUpdate = () => {
       refreshData();
@@ -554,12 +570,17 @@ function AdminRoute({
               setEditingProduct(null);
               setIsCreateModalOpen(true);
             }}
-            onEditProduct={handleOpenEdit}
+            onEditProduct={(product) => {
+              setDesignTargetStoreId(product.storeId);
+              setDesignTargetProductId(product.id);
+              setAdminTab('design');
+            }}
             onCustomizeDesign={(product) => {
               setDesignTargetStoreId(product.storeId);
               setDesignTargetProductId(product.id);
               setAdminTab('design');
             }}
+            onOpenSettingsModal={handleOpenEdit}
             onViewLandingPage={(p) => navigate(`/${p.slug}`)}
           />
         )}

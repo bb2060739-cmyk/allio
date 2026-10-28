@@ -898,50 +898,161 @@ export const deleteOrder = async (orderId: string): Promise<boolean> => {
 // ============================================================================
 
 let isInitialized = false;
+let remoteProductsMap = new Map<string, Product>();
+let remoteLandingPagesMap = new Map<string, Product>();
+let productsListenerReady = false;
+let landingPagesListenerReady = false;
+
+const broadcastMergedProducts = () => {
+  const mergedMap = new Map<string, Product>();
+
+  // Add all documents from landing_pages collection
+  remoteLandingPagesMap.forEach((page, id) => {
+    mergedMap.set(id, page);
+  });
+
+  // Overlay and merge documents from products collection
+  remoteProductsMap.forEach((prod, id) => {
+    const existing = mergedMap.get(id);
+    if (!existing) {
+      mergedMap.set(id, prod);
+    } else {
+      const prodTime = new Date(prod.updatedAt || prod.createdAt || 0).getTime();
+      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      if (prodTime >= existingTime) {
+        mergedMap.set(id, {
+          ...existing,
+          ...prod,
+          blocks: (prod.blocks && prod.blocks.length > 0) ? prod.blocks : existing.blocks
+        });
+      } else {
+        mergedMap.set(id, {
+          ...prod,
+          ...existing,
+          blocks: (existing.blocks && existing.blocks.length > 0) ? existing.blocks : prod.blocks
+        });
+      }
+    }
+  });
+
+  const merged = Array.from(mergedMap.values());
+  merged.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+  if (merged.length > 0 || (productsListenerReady && landingPagesListenerReady)) {
+    safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(merged));
+    window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: merged }));
+    window.dispatchEvent(new CustomEvent('allio_landing_pages_updated', { detail: merged }));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: merged } }));
+  }
+};
+
+export const refreshLandingPagesFromFirestore = async (): Promise<Product[]> => {
+  try {
+    const [productsSnap, lpSnap] = await Promise.all([
+      getDocs(query(collection(db, 'products'), limit(100))),
+      getDocs(query(collection(db, 'landing_pages'), limit(100)))
+    ]);
+
+    remoteProductsMap.clear();
+    remoteLandingPagesMap.clear();
+
+    productsSnap.forEach(d => {
+      remoteProductsMap.set(d.id, { ...(d.data() as Product), id: d.id });
+    });
+    lpSnap.forEach(d => {
+      remoteLandingPagesMap.set(d.id, { ...(d.data() as Product), id: d.id });
+    });
+
+    productsListenerReady = true;
+    landingPagesListenerReady = true;
+    broadcastMergedProducts();
+    return getProducts();
+  } catch (err) {
+    console.warn('[Firestore] Error on direct refreshLandingPagesFromFirestore:', err);
+    return getProducts();
+  }
+};
+
+export const refreshStoresFromFirestore = async (): Promise<Store[]> => {
+  try {
+    const snap = await getDocs(collection(db, 'stores'));
+    if (!snap.empty) {
+      const remoteStores: Store[] = [];
+      snap.forEach(d => {
+        remoteStores.push({ ...(d.data() as Store), id: d.id });
+      });
+      remoteStores.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      safeLocalStorage.setItem(STORES_KEY, JSON.stringify(remoteStores));
+      window.dispatchEvent(new CustomEvent('allio_stores_updated', { detail: remoteStores }));
+      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'stores', data: remoteStores } }));
+      return remoteStores;
+    }
+    return getStores();
+  } catch (err) {
+    console.warn('[Firestore] Error on direct refreshStoresFromFirestore:', err);
+    return getStores();
+  }
+};
 
 export const initFirestoreRealtimeSync = () => {
   if (isInitialized || typeof window === 'undefined') return;
   isInitialized = true;
 
-  // 1. Sync Products Real-Time Listener - Strictly limited to 12 documents to prevent mass document reads
+  // 1a. Sync Products Real-Time Listener (up to 100 docs to unblock all landing pages)
   try {
     const productsCol = collection(db, 'products');
-    const initialProductsQuery = query(productsCol, limit(12));
-    onSnapshot(initialProductsQuery, (snapshot) => {
+    const productsQuery = query(productsCol, limit(100));
+    onSnapshot(productsQuery, (snapshot) => {
       safeLocalStorage.setItem('allio_products_seeded', 'true');
+      remoteProductsMap.clear();
 
-      if (snapshot.empty) {
-        // If Firestore is empty (e.g. user deleted all products), KEEP IT EMPTY. Never auto-reseed dummy products!
-        safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
-        window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: [] }));
-        window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: [] } }));
-        return;
-      }
-
-      const remoteProducts: Product[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Product;
-        // CRITICAL: Bind id directly to docSnap.id to ensure the true Firebase document ID is used
-        remoteProducts.push({
+        remoteProductsMap.set(docSnap.id, {
           ...data,
           id: docSnap.id
         });
       });
 
-      // Sort by creation date
-      remoteProducts.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(remoteProducts));
-      window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: remoteProducts }));
-      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: remoteProducts } }));
+      productsListenerReady = true;
+      broadcastMergedProducts();
     }, (error) => {
       if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
-        console.warn('[Firestore Sync] Products listener operating in offline cache mode:', error.message);
+        console.warn('[Firestore Sync] Products listener operating in offline mode:', error.message);
       } else {
         handleFirestoreError(error, OperationType.LIST, 'products');
       }
     });
   } catch (err) {
     console.error('Error starting products realtime listener', err);
+  }
+
+  // 1b. Sync Landing Pages Real-Time Listener (syncs landing_pages collection as well)
+  try {
+    const lpCol = collection(db, 'landing_pages');
+    const lpQuery = query(lpCol, limit(100));
+    onSnapshot(lpQuery, (snapshot) => {
+      remoteLandingPagesMap.clear();
+
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Product;
+        remoteLandingPagesMap.set(docSnap.id, {
+          ...data,
+          id: docSnap.id
+        });
+      });
+
+      landingPagesListenerReady = true;
+      broadcastMergedProducts();
+    }, (error) => {
+      if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
+        console.warn('[Firestore Sync] Landing pages listener operating in offline mode:', error.message);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, 'landing_pages');
+      }
+    });
+  } catch (err) {
+    console.error('Error starting landing_pages realtime listener', err);
   }
 
   // 2. Sync Orders Real-Time Listener - Strictly limited to last 30 days to protect Firebase Free Tier limits!

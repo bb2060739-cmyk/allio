@@ -16,6 +16,7 @@ interface LandingPagesManagerProps {
   onEditProduct: (product: Product) => void;
   onViewLandingPage: (product: Product) => void;
   onCustomizeDesign: (product: Product) => void;
+  onOpenSettingsModal?: (product: Product) => void;
 }
 
 export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
@@ -25,7 +26,8 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
   onOpenCreateModal,
   onEditProduct,
   onViewLandingPage,
-  onCustomizeDesign
+  onCustomizeDesign,
+  onOpenSettingsModal
 }) => {
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
@@ -319,8 +321,8 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                 </button>
 
                 <button
-                  onClick={() => onEditProduct(product)}
-                  title="تعديل بيانات السعر والمخزون والبيكسل"
+                  onClick={() => onOpenSettingsModal ? onOpenSettingsModal(product) : onEditProduct(product)}
+                  title="إعدادات الصفحة (السعر، المخزون، والبيكسل)"
                   className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-blue-200 transition-colors cursor-pointer"
                 >
                   <Palette className="w-3.5 h-3.5" />
