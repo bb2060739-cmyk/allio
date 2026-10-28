@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Product, Order } from '../../types';
+import { Product, Order, Store } from '../../types';
 import { MoroccanOrderForm } from './MoroccanOrderForm';
 import { ThankYouPage } from './ThankYouPage';
 import { initTrackingPixels, trackPixelEvent } from '../../lib/pixelTracker';
@@ -15,11 +15,13 @@ import {
 
 interface PublicProductLandingProps {
   product: Product;
+  store?: Store;
   onNavigateHome?: () => void;
 }
 
 export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
   product,
+  store: propStore,
   onNavigateHome
 }) => {
   const { t, i18n } = useTranslation();
@@ -35,8 +37,8 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
   const productFullDesc = getLocalizedText(product.fullDescription, currentLang);
   const productBadge = getLocalizedText(product.badge, currentLang);
 
-  // Dynamic Store & Design Architecture
-  const store = getStoreById(product.storeId);
+  // Dynamic Store & Design Architecture: Read from parent Store
+  const store = propStore || getStoreById(product.storeId);
   const design = product.designConfig || getDefaultDesignConfig(productName, productFullDesc);
   const primaryColor = store.design?.primaryColor || '#059669';
   const secondaryColor = store.design?.secondaryColor || '#0f172a';

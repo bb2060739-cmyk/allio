@@ -52,37 +52,41 @@ export function generateSvgFavicon(primaryColor: string = '#059669', symbol: str
  * Updates the browser's favicon links in the document head
  */
 export function updateFavicon(iconUrl: string): void {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined' || !iconUrl) return;
 
-  // Look for existing icon links or create one
-  let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
-  if (!link) {
-    link = document.createElement('link');
+  try {
+    // Remove any existing favicon tags so the new Store favicon takes immediate effect
+    const existingIcons = document.querySelectorAll("link[rel*='icon']");
+    existingIcons.forEach(el => el.remove());
+
+    const link = document.createElement('link');
     link.rel = 'icon';
+
+    // Set type appropriately
+    if (iconUrl.startsWith('data:image/svg+xml') || iconUrl.endsWith('.svg')) {
+      link.type = 'image/svg+xml';
+    } else if (iconUrl.endsWith('.png') || iconUrl.startsWith('data:image/png')) {
+      link.type = 'image/png';
+    } else if (iconUrl.endsWith('.jpg') || iconUrl.endsWith('.jpeg') || iconUrl.startsWith('data:image/jpeg') || iconUrl.startsWith('data:image/webp')) {
+      link.type = 'image/jpeg';
+    } else {
+      link.type = 'image/x-icon';
+    }
+
+    link.href = iconUrl;
     document.head.appendChild(link);
-  }
 
-  // Set type appropriately
-  if (iconUrl.startsWith('data:image/svg+xml')) {
-    link.type = 'image/svg+xml';
-  } else if (iconUrl.endsWith('.png') || iconUrl.startsWith('data:image/png')) {
-    link.type = 'image/png';
-  } else if (iconUrl.endsWith('.jpg') || iconUrl.endsWith('.jpeg') || iconUrl.startsWith('data:image/jpeg')) {
-    link.type = 'image/jpeg';
-  } else {
-    link.type = 'image/x-icon';
+    // Also update or add apple-touch-icon
+    let appleLink: HTMLLinkElement | null = document.querySelector("link[rel='apple-touch-icon']");
+    if (!appleLink) {
+      appleLink = document.createElement('link');
+      appleLink.rel = 'apple-touch-icon';
+      document.head.appendChild(appleLink);
+    }
+    appleLink.href = iconUrl;
+  } catch (err) {
+    console.warn('Failed to dynamically update favicon:', err);
   }
-
-  link.href = iconUrl;
-
-  // Also update or add apple-touch-icon
-  let appleLink: HTMLLinkElement | null = document.querySelector("link[rel='apple-touch-icon']");
-  if (!appleLink) {
-    appleLink = document.createElement('link');
-    appleLink.rel = 'apple-touch-icon';
-    document.head.appendChild(appleLink);
-  }
-  appleLink.href = iconUrl;
 }
 
 /**

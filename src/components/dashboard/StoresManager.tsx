@@ -46,6 +46,9 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingFavicon, setIsUploadingFavicon] = useState(false);
+  const [faviconUploadError, setFaviconUploadError] = useState<string | null>(null);
 
   const handleOpenCreate = () => {
     setEditingStore(null);
@@ -61,6 +64,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
     setAnnouncementText('توصيل مجاني لجميع المدن المغربية 🇲🇦 والدفع نقداً عند الاستلام');
     setLogoType('text');
     setUploadError(null);
+    setFaviconUploadError(null);
     setIsModalOpen(true);
   };
 
@@ -78,6 +82,7 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
     setAnnouncementText(typeof store.design?.announcementText === 'string' ? store.design.announcementText : getLocalizedText(store.design?.announcementText));
     setLogoType(store.design?.logoType || (store.design?.logoImageUrl ? 'image' : 'text'));
     setUploadError(null);
+    setFaviconUploadError(null);
     setIsModalOpen(true);
   };
 
@@ -97,13 +102,39 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
       setIsUploadingLogo(true);
       const { dataUrl } = await processAndCompressImage(file, 800);
       setLogoImageUrl(dataUrl);
-      setFaviconUrl(dataUrl);
+      if (!faviconUrl) {
+        setFaviconUrl(dataUrl);
+      }
       setLogoType('image');
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'فشل معالجة ورفع الشعار');
     } finally {
       setIsUploadingLogo(false);
       if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
+
+  const handleFaviconFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFaviconUploadError(null);
+    const val = validateImageFile(file);
+    if (!val.valid) {
+      setFaviconUploadError(val.error || `حجم الصورة يتجاوز الحد الأقصى (${MAX_IMAGE_SIZE_MB} ميغابايت).`);
+      if (faviconInputRef.current) faviconInputRef.current.value = '';
+      return;
+    }
+
+    try {
+      setIsUploadingFavicon(true);
+      const { dataUrl } = await processAndCompressImage(file, 256);
+      setFaviconUrl(dataUrl);
+    } catch (err) {
+      setFaviconUploadError(err instanceof Error ? err.message : 'فشل معالجة ورفع أيقونة الفافيكون');
+    } finally {
+      setIsUploadingFavicon(false);
+      if (faviconInputRef.current) faviconInputRef.current.value = '';
     }
   };
 
@@ -523,6 +554,86 @@ export const StoresManager: React.FC<StoresManagerProps> = ({
                       />
                     </div>
                   )}
+                </div>
+
+                {/* Dedicated Store Favicon (Browser Tab Icon) Section */}
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="font-bold text-slate-800 block text-xs">
+                        أيقونة المتصفح للمتجر (Store Favicon - URL or Upload):
+                      </label>
+                      <span className="text-[11px] text-slate-500">
+                        تظهر في شريط تبويب المتصفح لجميع صفحات الهبوط التابعة لهذا المتجر
+                      </span>
+                    </div>
+                    {faviconUrl && (
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                        مفعلة ✓
+                      </span>
+                    )}
+                  </div>
+
+                  {faviconUploadError && (
+                    <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-lg font-bold">
+                      {faviconUploadError}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    {faviconUrl ? (
+                      <div className="w-10 h-10 rounded-xl border border-slate-200 bg-white p-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                        <img src={faviconUrl} alt="Store Favicon" className="w-full h-full object-contain" />
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0 text-xs font-bold font-mono">
+                        {name ? name.charAt(0).toUpperCase() : 'A'}
+                      </div>
+                    )}
+
+                    <div className="flex-1 flex gap-2">
+                      <input
+                        type="file"
+                        ref={faviconInputRef}
+                        accept="image/x-icon,image/png,image/svg+xml,image/jpeg"
+                        onChange={handleFaviconFileSelect}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        disabled={isUploadingFavicon}
+                        onClick={() => faviconInputRef.current?.click()}
+                        className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {isUploadingFavicon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        <span>رفع أيقونة المتصفح (Favicon Upload)</span>
+                      </button>
+
+                      {faviconUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFaviconUrl('')}
+                          className="px-2.5 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold border border-rose-200 cursor-pointer"
+                        >
+                          إزالة
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] text-slate-500 block mb-1">
+                      أو أدخل رابط الأيقونة مباشرة (Store Favicon URL):
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://example.com/favicon.png أو رابط صورة .ico / .png / .svg"
+                      value={faviconUrl}
+                      onChange={(e) => setFaviconUrl(e.target.value)}
+                      dir="ltr"
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-mono text-[11px]"
+                    />
+                  </div>
                 </div>
 
                 {/* Announcement Bar Text */}

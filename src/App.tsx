@@ -15,6 +15,7 @@ import {
   saveProduct, 
   initFirestoreRealtimeSync, 
   getStores, 
+  getStoreById,
   fetchProductBySlug,
   refreshLandingPagesFromFirestore,
   refreshStoresFromFirestore,
@@ -142,7 +143,8 @@ function AppContent() {
         path="/p/:slug" 
         element={
           <DynamicLandingPageRoute 
-            products={products} 
+            products={products}
+            stores={stores}
             isAuth={isAuth} 
             onAuthChange={refreshData}
           />
@@ -154,7 +156,8 @@ function AppContent() {
         path="/:slug" 
         element={
           <DynamicLandingPageRoute 
-            products={products} 
+            products={products}
+            stores={stores}
             isAuth={isAuth} 
             onAuthChange={refreshData}
           />
@@ -235,10 +238,12 @@ function StorefrontRoute({
  */
 function DynamicLandingPageRoute({ 
   products, 
+  stores = [],
   isAuth, 
   onAuthChange 
 }: { 
   products: Product[]; 
+  stores?: Store[];
   isAuth: boolean; 
   onAuthChange: () => void; 
 }) {
@@ -258,6 +263,7 @@ function DynamicLandingPageRoute({
 
   // Look up product in cached/synced list or from targeted single-document fetch
   const product = products.find(p => p.slug === slug || p.id === slug) || individualProduct;
+  const parentStore = stores.find(s => s.id === product?.storeId) || (product?.storeId ? getStoreById(product.storeId) : stores[0]) || getStoreById();
 
   useEffect(() => {
     if (!product && slug) {
@@ -317,6 +323,7 @@ function DynamicLandingPageRoute({
 
         <PublicProductLanding
           product={product}
+          store={parentStore}
           onNavigateHome={() => navigate('/')}
         />
       </div>
@@ -425,6 +432,7 @@ function DynamicLandingPageRoute({
             <div className="flex-1 overflow-y-auto">
               <PublicProductLanding
                 product={product}
+                store={parentStore}
                 onNavigateHome={() => navigate('/')}
               />
             </div>
@@ -432,6 +440,7 @@ function DynamicLandingPageRoute({
         ) : (
           <PublicProductLanding
             product={product}
+            store={parentStore}
             onNavigateHome={() => navigate('/')}
           />
         )}
