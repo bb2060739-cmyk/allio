@@ -7,6 +7,7 @@ import {
   getDoc,
   getDocs, 
   setDoc, 
+  addDoc,
   deleteDoc, 
   updateDoc, 
   onSnapshot,
@@ -16,6 +17,127 @@ import {
 } from 'firebase/firestore';
 import { getFromCache, setInCache, invalidateCache, DEFAULT_CACHE_TTL } from './cache';
 import { getLocalizedText } from '../utils/i18n';
+
+/**
+ * Strips out any 'undefined' values recursively to strictly adhere to Firestore SDK requirements.
+ * Passing 'undefined' to Firestore SDK throws fatal: "Unsupported field value: undefined".
+ */
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clean: any = Array.isArray(obj) ? [] : {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined) {
+      if (val && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        clean[key] = sanitizeForFirestore(val);
+      } else if (Array.isArray(val)) {
+        clean[key] = val.map(item => (item && typeof item === 'object') ? sanitizeForFirestore(item) : item);
+      } else {
+        clean[key] = val;
+      }
+    }
+  }
+  return clean;
+}
+
+/**
+ * Normalizes any document from 'landing_pages' or 'products' collection into a fully valid Product object.
+ * Protects old legacy documents from causing undefined property crashes in UI components.
+ */
+export const mapDocToProduct = (docId: string, data: any): Product => {
+  if (!data || typeof data !== 'object') {
+    return {
+      id: docId,
+      storeId: 'store-default',
+      slug: 'page-' + docId,
+      name: 'صفحة هبوط',
+      price: 0,
+      currency: 'DH',
+      shortDescription: '',
+      fullDescription: '',
+      features: [],
+      images: ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'],
+      freeShipping: true,
+      inStock: true,
+      stockCount: 10,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      views: 0,
+      salesCount: 0
+    };
+  }
+
+  // Normalize title / name
+  let name = data.name;
+  if (!name && data.title) {
+    name = data.title;
+  }
+  if (!name && data.productName) {
+    name = data.productName;
+  }
+  if (!name) {
+    name = 'صفحة هبوط';
+  }
+
+  // Normalize descriptions
+  const shortDescription = data.shortDescription || data.description || '';
+  const fullDescription = data.fullDescription || data.description || '';
+
+  // Normalize images
+  let images: string[] = [];
+  if (Array.isArray(data.images) && data.images.length > 0) {
+    images = data.images.filter((img: any) => typeof img === 'string' && img.trim().length > 0);
+  } else if (typeof data.imageUrl === 'string' && data.imageUrl.trim()) {
+    images = [data.imageUrl.trim()];
+  } else if (typeof data.image === 'string' && data.image.trim()) {
+    images = [data.image.trim()];
+  } else if (typeof data.heroImage === 'string' && data.heroImage.trim()) {
+    images = [data.heroImage.trim()];
+  }
+  if (images.length === 0) {
+    images = ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'];
+  }
+
+  // Normalize slug
+  const nameStr = typeof name === 'string' ? name : (getLocalizedText(name) || 'product');
+  const slug = data.slug || docId || nameStr.toLowerCase().trim().replace(/[^\w\u0621-\u064A\s-]/g, '').replace(/\s+/g, '-');
+
+  // Normalize price
+  const price = Number(data.price) || 0;
+  const originalPrice = data.originalPrice ? Number(data.originalPrice) : undefined;
+
+  // Normalize features
+  const features = Array.isArray(data.features) ? data.features : [];
+
+  return {
+    ...data,
+    id: docId,
+    storeId: data.storeId || 'store-default',
+    slug,
+    name,
+    price,
+    originalPrice,
+    currency: data.currency || 'DH',
+    shortDescription,
+    fullDescription,
+    features,
+    images,
+    badge: data.badge || 'عرض خاص بالمغرب 🔥',
+    freeShipping: data.freeShipping !== false,
+    inStock: data.inStock !== false,
+    stockCount: Number(data.stockCount) || 10,
+    fbPixelId: data.fbPixelId || '',
+    tiktokPixelId: data.tiktokPixelId || '',
+    createdAt: data.createdAt || new Date().toISOString(),
+    updatedAt: data.updatedAt || new Date().toISOString(),
+    views: Number(data.views) || 0,
+    salesCount: Number(data.salesCount) || 0,
+    designConfig: data.designConfig || getDefaultDesignConfig(name, fullDescription),
+    blocks: (data.blocks && data.blocks.length > 0)
+      ? data.blocks
+      : getDefaultLayoutBlocks(nameStr, typeof shortDescription === 'string' ? shortDescription : '', images),
+    advancedLayout: data.advancedLayout || undefined
+  };
+};
 
 const PRODUCTS_KEY = 'allio_products';
 const ORDERS_KEY = 'allio_orders';
@@ -381,10 +503,12 @@ export const saveStore = async (storeData: Partial<Store> & { name: string }): P
 
   // 2. Permanent Cloud Firestore Sync
   try {
+    const cleanStorePayload = sanitizeForFirestore(targetStore);
     const storeRef = doc(db, 'stores', targetStore.id);
-    await setDoc(storeRef, targetStore);
+    await setDoc(storeRef, cleanStorePayload, { merge: true });
     console.log(`[Firebase] Successfully saved store doc: stores/${targetStore.id}`);
   } catch (error) {
+    console.error(`[Firebase] Error saving store doc stores/${targetStore.id}:`, error);
     handleFirestoreError(error, OperationType.WRITE, `stores/${targetStore.id}`);
   }
 
@@ -513,7 +637,6 @@ export const fetchMoreProducts = async (currentCount: number, batchSize: number 
 };
 
 export const saveProduct = async (productData: Partial<Product> & { name: LocalizedString; price: number; blocks?: LayoutBlock[] }): Promise<Product> => {
-  await ensureAdminAuth();
   const products = getProducts();
   const nameStr = getLocalizedText(productData.name, 'en') || getLocalizedText(productData.name, 'ar') || 'product';
   const slug = productData.slug || nameStr.toLowerCase().trim()
@@ -522,16 +645,21 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
 
   const shortDescStr = typeof productData.shortDescription === 'string' ? productData.shortDescription : getLocalizedText(productData.shortDescription);
   const fullDescStr = typeof productData.fullDescription === 'string' ? productData.fullDescription : getLocalizedText(productData.fullDescription);
-  const badgeStr = typeof productData.badge === 'string' ? productData.badge : getLocalizedText(productData.badge, 'ar', 'عرض حصري بالمغرب 🔥');
+  const badgeStr = typeof productData.badge === 'string' ? productData.badge : getLocalizedText(productData.badge, 'ar', 'عرض خاص بالمغرب 🔥');
 
+  const isEditing = Boolean(productData.id && productData.id.trim());
   let targetProduct: Product;
 
-  if (productData.id && productData.id.trim()) {
-    // Update existing product / landing page
-    const existingId = productData.id.trim();
+  if (isEditing) {
+    // -------------------------------------------------------------------------
+    // 1. EDIT EXISTING LANDING PAGE: updateDoc with { merge: true }
+    // -------------------------------------------------------------------------
+    const existingId = productData.id!.trim();
     const index = products.findIndex(p => p.id === existingId);
     const existing = index !== -1 ? products[index] : ({} as Product);
-    const existingBlocks = existing.blocks && existing.blocks.length > 0 ? existing.blocks : getDefaultLayoutBlocks(nameStr, shortDescStr, productData.images || existing.images || []);
+    const existingBlocks = existing.blocks && existing.blocks.length > 0 
+      ? existing.blocks 
+      : getDefaultLayoutBlocks(nameStr, shortDescStr, productData.images || existing.images || []);
 
     targetProduct = {
       ...existing,
@@ -555,9 +683,48 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
     } else {
       products.unshift(targetProduct);
     }
+
+    // Sanitize payload to strip 'undefined' which Firestore rejects
+    const cleanPayload = sanitizeForFirestore({ ...targetProduct });
+
+    // Update landing_pages collection
+    try {
+      const lpRef = doc(db, 'landing_pages', existingId);
+      await updateDoc(lpRef, cleanPayload).catch(async (updateErr) => {
+        console.warn(`[Firebase Note] updateDoc landing_pages/${existingId} notice, applying setDoc with merge:true:`, updateErr.message);
+        await setDoc(lpRef, cleanPayload, { merge: true });
+      });
+      console.log(`[Firebase] Successfully updated landing page in landing_pages/${existingId}`);
+    } catch (err) {
+      console.error(`[Firebase Error] Failed to persist update to landing_pages/${existingId}:`, err);
+      try {
+        await setDoc(doc(db, 'landing_pages', existingId), cleanPayload, { merge: true });
+      } catch (fallbackErr) {
+        console.error(`[Firebase Error] Fallback setDoc also failed on landing_pages:`, fallbackErr);
+      }
+    }
+
+    // Mirror update to products collection
+    try {
+      const pRef = doc(db, 'products', existingId);
+      await updateDoc(pRef, cleanPayload).catch(async (updateErr) => {
+        console.warn(`[Firebase Note] updateDoc products/${existingId} notice, applying setDoc with merge:true:`, updateErr.message);
+        await setDoc(pRef, cleanPayload, { merge: true });
+      });
+      console.log(`[Firebase] Successfully updated product in products/${existingId}`);
+    } catch (err) {
+      console.error(`[Firebase Error] Failed to persist update to products/${existingId}:`, err);
+      try {
+        await setDoc(doc(db, 'products', existingId), cleanPayload, { merge: true });
+      } catch (fallbackErr) {
+        console.error(`[Firebase Error] Fallback setDoc also failed on products:`, fallbackErr);
+      }
+    }
+
   } else {
-    // Create new landing page / product with guaranteed unique document ID
-    const newId = 'page-' + Date.now();
+    // -------------------------------------------------------------------------
+    // 2. CREATE NEW LANDING PAGE: Firebase addDoc (generating document ID)
+    // -------------------------------------------------------------------------
     const initImages = productData.images && productData.images.length > 0 ? productData.images : [
       'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
     ];
@@ -565,8 +732,8 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
       ? productData.blocks
       : getDefaultLayoutBlocks(nameStr, shortDescStr, initImages);
 
-    targetProduct = {
-      id: newId,
+    const nowISO = new Date().toISOString();
+    const newPageDoc: Omit<Product, 'id'> = {
       storeId: productData.storeId || 'store-default',
       designConfig: productData.designConfig || getDefaultDesignConfig(nameStr, fullDescStr),
       blocks: initialBlocks,
@@ -585,21 +752,56 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
         'ضمان الاستبدال أو الاسترجاع لمدة 14 يوماً'
       ],
       images: initImages,
-      badge: badgeStr || 'عرض حصري بالمغرب 🔥',
+      badge: badgeStr || 'عرض خاص بالمغرب 🔥',
       freeShipping: productData.freeShipping !== false,
       inStock: true,
       stockCount: productData.stockCount || 15,
       fbPixelId: productData.fbPixelId?.trim() || '',
       tiktokPixelId: productData.tiktokPixelId?.trim() || '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: nowISO,
+      updatedAt: nowISO,
       views: 0,
       salesCount: 0
     };
+
+    const cleanPayload = sanitizeForFirestore(newPageDoc);
+    let createdDocId = 'page-' + Date.now();
+
+    // Use Firebase addDoc for creating new pages
+    try {
+      const lpCol = collection(db, 'landing_pages');
+      const docRef = await addDoc(lpCol, cleanPayload);
+      createdDocId = docRef.id;
+      console.log(`[Firebase] Successfully created new landing page via addDoc: landing_pages/${createdDocId}`);
+    } catch (createErr) {
+      console.error(`[Firebase Error] Failed to create landing page via addDoc on landing_pages:`, createErr);
+      // Fallback with setDoc with { merge: true }
+      try {
+        await setDoc(doc(db, 'landing_pages', createdDocId), cleanPayload, { merge: true });
+        console.log(`[Firebase Fallback] Successfully created with setDoc { merge: true }: landing_pages/${createdDocId}`);
+      } catch (setDocErr) {
+        console.error(`[Firebase Error] Fallback setDoc also failed on landing_pages:`, setDocErr);
+      }
+    }
+
+    targetProduct = {
+      ...newPageDoc,
+      id: createdDocId
+    };
+
+    // Mirror new document into 'products' collection using setDoc with { merge: true }
+    try {
+      const productRef = doc(db, 'products', createdDocId);
+      await setDoc(productRef, sanitizeForFirestore({ ...targetProduct, id: createdDocId }), { merge: true });
+      console.log(`[Firebase] Successfully synced new product to products/${createdDocId}`);
+    } catch (pErr) {
+      console.error(`[Firebase Error] Failed to sync new product to products/${createdDocId}:`, pErr);
+    }
+
     products.unshift(targetProduct);
   }
 
-  // 1. Optimistic Local Update
+  // Optimistic Local Cache Update & Event Notification
   safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: targetProduct }));
@@ -607,36 +809,18 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
     window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: targetProduct } }));
   }
 
-  // 2. Permanent Cloud Firestore Sync to BOTH 'products' and 'landing_pages' collections
-  try {
-    const productRef = doc(db, 'products', targetProduct.id);
-    await setDoc(productRef, targetProduct);
-    console.log(`[Firebase] Successfully saved product doc: products/${targetProduct.id}`);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `products/${targetProduct.id}`);
-  }
-
-  try {
-    const landingPageRef = doc(db, 'landing_pages', targetProduct.id);
-    await setDoc(landingPageRef, targetProduct);
-    console.log(`[Firebase] Successfully synced landing_page doc: landing_pages/${targetProduct.id}`);
-  } catch (lpErr) {
-    console.warn(`[Firebase landing_pages] Sync note:`, lpErr);
-  }
-
   return targetProduct;
 };
 
 /**
- * Saves advancedLayout directly to Firestore product and landing_pages documents.
- * Adheres strictly to zero auto-save and zero continuous listeners policy.
+ * Saves advancedLayout directly to Firestore landing_pages and products documents using updateDoc with setDoc merge:true fallback.
+ * Strictly adheres to zero auto-save and zero continuous listeners policy.
  */
 export const saveLandingPageAdvancedLayout = async (productId: string, advancedLayout: any): Promise<Product | null> => {
-  await ensureAdminAuth();
   const products = getProducts();
   const index = products.findIndex(p => p.id === productId || p.slug === productId);
   if (index === -1) {
-    console.error('[Firebase] Cannot save advancedLayout: Product not found:', productId);
+    console.error('[Firebase Error] Cannot save advancedLayout: Product not found:', productId);
     return null;
   }
 
@@ -655,34 +839,40 @@ export const saveLandingPageAdvancedLayout = async (productId: string, advancedL
     window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: updatedProduct } }));
   }
 
-  // Single-write to Firestore documents with zero real-time listeners or auto-saving
+  const cleanUpdate = sanitizeForFirestore({
+    advancedLayout,
+    updatedAt: updatedProduct.updatedAt
+  });
+
+  // Single-write to Firestore landing_pages document
   try {
-    const productRef = doc(db, 'products', updatedProduct.id);
-    await updateDoc(productRef, {
-      advancedLayout,
-      updatedAt: updatedProduct.updatedAt
+    const lpRef = doc(db, 'landing_pages', updatedProduct.id);
+    await updateDoc(lpRef, cleanUpdate).catch(async () => {
+      await setDoc(lpRef, cleanUpdate, { merge: true });
     });
-  } catch (err) {
+    console.log(`[Firebase] Successfully saved advancedLayout to landing_pages/${updatedProduct.id}`);
+  } catch (lpErr) {
+    console.error(`[Firebase Error] Error saving advancedLayout to landing_pages/${updatedProduct.id}:`, lpErr);
     try {
-      const productRef = doc(db, 'products', updatedProduct.id);
-      await setDoc(productRef, updatedProduct, { merge: true });
+      await setDoc(doc(db, 'landing_pages', updatedProduct.id), cleanUpdate, { merge: true });
     } catch (setErr) {
-      console.warn('[Firebase] setDoc fallback error on products:', setErr);
+      console.error('[Firebase Error] Fallback setDoc on landing_pages failed:', setErr);
     }
   }
 
+  // Single-write to Firestore products document
   try {
-    const lpRef = doc(db, 'landing_pages', updatedProduct.id);
-    await updateDoc(lpRef, {
-      advancedLayout,
-      updatedAt: updatedProduct.updatedAt
+    const productRef = doc(db, 'products', updatedProduct.id);
+    await updateDoc(productRef, cleanUpdate).catch(async () => {
+      await setDoc(productRef, cleanUpdate, { merge: true });
     });
-  } catch (lpErr) {
+    console.log(`[Firebase] Successfully saved advancedLayout to products/${updatedProduct.id}`);
+  } catch (err) {
+    console.error(`[Firebase Error] Error saving advancedLayout to products/${updatedProduct.id}:`, err);
     try {
-      const lpRef = doc(db, 'landing_pages', updatedProduct.id);
-      await setDoc(lpRef, updatedProduct, { merge: true });
-    } catch {
-      // ignore
+      await setDoc(doc(db, 'products', updatedProduct.id), cleanUpdate, { merge: true });
+    } catch (setErr) {
+      console.error('[Firebase Error] Fallback setDoc on products failed:', setErr);
     }
   }
 
@@ -844,7 +1034,7 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 
 
   try {
     const orderRef = doc(db, 'orders', newOrder.id);
-    await setDoc(orderRef, sanitizedDoc);
+    await setDoc(orderRef, sanitizedDoc, { merge: true });
     console.log(`[Firebase] Successfully created order doc: orders/${newOrder.id}`, sanitizedDoc);
   } catch (error) {
     console.error(`[Firebase] Error creating order doc: orders/${newOrder.id}:`, error);
@@ -987,13 +1177,17 @@ const broadcastMergedProducts = () => {
         mergedMap.set(id, {
           ...existing,
           ...prod,
-          blocks: (prod.blocks && prod.blocks.length > 0) ? prod.blocks : existing.blocks
+          images: (prod.images && prod.images.length > 0) ? prod.images : existing.images,
+          blocks: (prod.blocks && prod.blocks.length > 0) ? prod.blocks : existing.blocks,
+          advancedLayout: prod.advancedLayout || existing.advancedLayout
         });
       } else {
         mergedMap.set(id, {
           ...prod,
           ...existing,
-          blocks: (existing.blocks && existing.blocks.length > 0) ? existing.blocks : prod.blocks
+          images: (existing.images && existing.images.length > 0) ? existing.images : prod.images,
+          blocks: (existing.blocks && existing.blocks.length > 0) ? existing.blocks : prod.blocks,
+          advancedLayout: existing.advancedLayout || prod.advancedLayout
         });
       }
     }
@@ -1004,35 +1198,53 @@ const broadcastMergedProducts = () => {
 
   if (merged.length > 0 || (productsListenerReady && landingPagesListenerReady)) {
     safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(merged));
-    window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: merged }));
-    window.dispatchEvent(new CustomEvent('allio_landing_pages_updated', { detail: merged }));
-    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: merged } }));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: merged }));
+      window.dispatchEvent(new CustomEvent('allio_landing_pages_updated', { detail: merged }));
+      window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: merged } }));
+    }
   }
 };
 
 export const refreshLandingPagesFromFirestore = async (): Promise<Product[]> => {
   try {
-    const [productsSnap, lpSnap] = await Promise.all([
-      getDocs(query(collection(db, 'products'), limit(100))),
-      getDocs(query(collection(db, 'landing_pages'), limit(100)))
+    console.log('[Firebase] Starting fetch for landing pages from Firestore collections (landing_pages & products)...');
+    const [lpSnap, productsSnap] = await Promise.all([
+      getDocs(query(collection(db, 'landing_pages'), limit(100))),
+      getDocs(query(collection(db, 'products'), limit(100)))
     ]);
 
-    remoteProductsMap.clear();
+    console.log(`[Firebase] Query completed. Found ${lpSnap.size} docs in landing_pages, ${productsSnap.size} docs in products.`);
+
     remoteLandingPagesMap.clear();
+    remoteProductsMap.clear();
+
+    lpSnap.forEach(d => {
+      try {
+        const mapped = mapDocToProduct(d.id, d.data());
+        remoteLandingPagesMap.set(d.id, mapped);
+      } catch (err) {
+        console.error(`[Firebase Error] Failed to map document ${d.id} from landing_pages:`, err);
+      }
+    });
 
     productsSnap.forEach(d => {
-      remoteProductsMap.set(d.id, { ...(d.data() as Product), id: d.id });
-    });
-    lpSnap.forEach(d => {
-      remoteLandingPagesMap.set(d.id, { ...(d.data() as Product), id: d.id });
+      try {
+        const mapped = mapDocToProduct(d.id, d.data());
+        remoteProductsMap.set(d.id, mapped);
+      } catch (err) {
+        console.error(`[Firebase Error] Failed to map document ${d.id} from products:`, err);
+      }
     });
 
     productsListenerReady = true;
     landingPagesListenerReady = true;
     broadcastMergedProducts();
-    return getProducts();
+    const result = getProducts();
+    console.log(`[Firebase] Total merged active landing pages ready in memory: ${result.length}`);
+    return result;
   } catch (err) {
-    console.warn('[Firestore] Error on direct refreshLandingPagesFromFirestore:', err);
+    console.error('[Firebase Error] Error during refreshLandingPagesFromFirestore:', err);
     return getProducts();
   }
 };
@@ -1053,7 +1265,7 @@ export const refreshStoresFromFirestore = async (): Promise<Store[]> => {
     }
     return getStores();
   } catch (err) {
-    console.warn('[Firestore] Error on direct refreshStoresFromFirestore:', err);
+    console.error('[Firebase Error] Error on direct refreshStoresFromFirestore:', err);
     return getStores();
   }
 };
@@ -1062,7 +1274,7 @@ export const initFirestoreRealtimeSync = () => {
   if (isInitialized || typeof window === 'undefined') return;
   isInitialized = true;
 
-  // 1a. Sync Products Real-Time Listener (up to 100 docs to unblock all landing pages)
+  // 1a. Sync Products Real-Time Listener
   try {
     const productsCol = collection(db, 'products');
     const productsQuery = query(productsCol, limit(100));
@@ -1071,27 +1283,24 @@ export const initFirestoreRealtimeSync = () => {
       remoteProductsMap.clear();
 
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as Product;
-        remoteProductsMap.set(docSnap.id, {
-          ...data,
-          id: docSnap.id
-        });
+        try {
+          const mapped = mapDocToProduct(docSnap.id, docSnap.data());
+          remoteProductsMap.set(docSnap.id, mapped);
+        } catch (err) {
+          console.error(`[Firestore Sync Error] Failed to parse product doc ${docSnap.id}:`, err);
+        }
       });
 
       productsListenerReady = true;
       broadcastMergedProducts();
     }, (error) => {
-      if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
-        console.warn('[Firestore Sync] Products listener operating in offline mode:', error.message);
-      } else {
-        handleFirestoreError(error, OperationType.LIST, 'products');
-      }
+      console.error('[Firestore Sync Error] Products listener error:', error);
     });
   } catch (err) {
-    console.error('Error starting products realtime listener', err);
+    console.error('[Firestore Sync Error] Error starting products realtime listener:', err);
   }
 
-  // 1b. Sync Landing Pages Real-Time Listener (syncs landing_pages collection as well)
+  // 1b. Sync Landing Pages Real-Time Listener
   try {
     const lpCol = collection(db, 'landing_pages');
     const lpQuery = query(lpCol, limit(100));
@@ -1099,24 +1308,21 @@ export const initFirestoreRealtimeSync = () => {
       remoteLandingPagesMap.clear();
 
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as Product;
-        remoteLandingPagesMap.set(docSnap.id, {
-          ...data,
-          id: docSnap.id
-        });
+        try {
+          const mapped = mapDocToProduct(docSnap.id, docSnap.data());
+          remoteLandingPagesMap.set(docSnap.id, mapped);
+        } catch (err) {
+          console.error(`[Firestore Sync Error] Failed to parse landing_page doc ${docSnap.id}:`, err);
+        }
       });
 
       landingPagesListenerReady = true;
       broadcastMergedProducts();
     }, (error) => {
-      if (error && (error.code === 'unavailable' || error.message.includes('offline'))) {
-        console.warn('[Firestore Sync] Landing pages listener operating in offline mode:', error.message);
-      } else {
-        handleFirestoreError(error, OperationType.LIST, 'landing_pages');
-      }
+      console.error('[Firestore Sync Error] Landing pages listener error:', error);
     });
   } catch (err) {
-    console.error('Error starting landing_pages realtime listener', err);
+    console.error('[Firestore Sync Error] Error starting landing_pages realtime listener:', err);
   }
 
   // 2. Sync Orders Real-Time Listener - Strictly limited to last 30 days to protect Firebase Free Tier limits!

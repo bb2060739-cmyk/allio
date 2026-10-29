@@ -153,31 +153,43 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
     setImages(images.filter((_, i) => i !== index));
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !price) return;
 
-    await onSave({
-      id: editingProduct?.id,
-      storeId,
-      name: name.trim(), // Stored as lightweight single string
-      slug: slug.trim() || 'product-' + Date.now(),
-      price: Number(price),
-      originalPrice: originalPrice ? Number(originalPrice) : undefined,
-      shortDescription: shortDescription.trim(),
-      fullDescription: fullDescription.trim(),
-      features: features.filter(f => f.trim().length > 0),
-      images: images.length > 0 ? images : [
-        'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
-      ],
-      badge: badge.trim(),
-      stockCount: Number(stockCount) || 10,
-      fbPixelId: fbPixelId.trim(),
-      tiktokPixelId: tiktokPixelId.trim(),
-      freeShipping
-    });
+    setIsSubmitting(true);
+    setSaveError(null);
 
-    onClose();
+    try {
+      await onSave({
+        id: editingProduct?.id,
+        storeId,
+        name: name.trim(), // Stored as lightweight single string
+        slug: slug.trim() || 'product-' + Date.now(),
+        price: Number(price),
+        originalPrice: originalPrice ? Number(originalPrice) : undefined,
+        shortDescription: shortDescription.trim(),
+        fullDescription: fullDescription.trim(),
+        features: features.filter(f => f.trim().length > 0),
+        images: images.length > 0 ? images : [
+          'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
+        ],
+        badge: badge.trim(),
+        stockCount: Number(stockCount) || 10,
+        fbPixelId: fbPixelId.trim(),
+        tiktokPixelId: tiktokPixelId.trim(),
+        freeShipping
+      });
+      onClose();
+    } catch (err) {
+      console.error('[NewProductModal] Failed to persist product to Firestore:', err);
+      setSaveError(err instanceof Error ? err.message : 'فشل حفظ صفحة الهبوط في Firebase. المرجو المحاولة مجدداً.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -564,20 +576,37 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
             </div>
           </div>
 
+          {/* Save Error Alert */}
+          {saveError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+              <span>{saveError}</span>
+            </div>
+          )}
+
           {/* Form Actions */}
           <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3 sticky bottom-0 bg-white py-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
             >
               إلغاء
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-60"
             >
-              {editingProduct ? 'حفظ التعديلات' : 'نشر صفحة المنتج الآن'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>جاري الحفظ في Firebase...</span>
+                </>
+              ) : (
+                <span>{editingProduct ? 'حفظ التعديلات' : 'نشر صفحة المنتج الآن'}</span>
+              )}
             </button>
           </div>
         </form>

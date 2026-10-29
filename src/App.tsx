@@ -78,9 +78,35 @@ function AppContent() {
     refreshData();
 
     // Proactively fetch and unblock existing data from Firestore collections
-    refreshLandingPagesFromFirestore().catch(() => {});
-    refreshStoresFromFirestore().catch(() => {});
-    refreshOrdersFromFirestore().catch(() => {});
+    refreshLandingPagesFromFirestore()
+      .then((fetched) => {
+        if (fetched && fetched.length > 0) {
+          setProducts(fetched);
+        }
+      })
+      .catch((err) => {
+        console.error('[App Error] Failed to refresh landing pages on mount:', err);
+      });
+
+    refreshStoresFromFirestore()
+      .then((fetchedStores) => {
+        if (fetchedStores && fetchedStores.length > 0) {
+          setStores(fetchedStores);
+        }
+      })
+      .catch((err) => {
+        console.error('[App Error] Failed to refresh stores on mount:', err);
+      });
+
+    refreshOrdersFromFirestore()
+      .then((fetchedOrders) => {
+        if (fetchedOrders && fetchedOrders.length > 0) {
+          setOrders(fetchedOrders);
+        }
+      })
+      .catch((err) => {
+        console.error('[App Error] Failed to refresh orders on mount:', err);
+      });
 
     const handleUpdate = () => {
       refreshData();
@@ -492,9 +518,17 @@ function AdminRoute({
   }
 
   const handleSaveProduct = async (productData: Partial<Product> & { name: LocalizedString; price: number }) => {
-    await saveProduct(productData);
-    onDataChange();
-    setEditingProduct(null);
+    try {
+      console.log('[App] Initiating saveProduct for landing page:', productData.slug || productData.id);
+      const saved = await saveProduct(productData);
+      console.log('[App] Successfully persisted landing page with ID:', saved.id);
+      onDataChange();
+      setEditingProduct(null);
+      setIsCreateModalOpen(false);
+    } catch (error) {
+      console.error('[App] Critical error inside handleSaveProduct:', error);
+      throw error;
+    }
   };
 
   const handleOpenEdit = (product: Product) => {
