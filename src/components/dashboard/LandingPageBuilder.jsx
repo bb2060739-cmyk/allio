@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -15,6 +15,7 @@ import {
   Type, 
   ExternalLink 
 } from 'lucide-react';
+import { saveLandingPageAdvancedLayout } from '../../lib/storage';
 
 // ============================================================================
 // 1. STATIC PRE-MADE THEMES (0 Firebase Reads - Hardcoded Presets)
@@ -97,7 +98,33 @@ const INITIAL_SECTIONS = [
   }
 ];
 
-export default function LandingPageBuilder({ initialData, onSavePublish }) {
+/**
+ * @param {{
+ *   initialData?: any;
+ *   onSavePublish?: (productId?: string, layout?: any) => Promise<void> | void;
+ *   products?: any[];
+ *   currentProductId?: string;
+ *   onSelectProduct?: (productId: string) => void;
+ *   onViewPage?: (product: any) => void;
+ * }} props
+ */
+export default function LandingPageBuilder({ 
+  initialData, 
+  onSavePublish, 
+  products = /** @type {any[]} */ ([]), 
+  currentProductId,
+  onSelectProduct,
+  onViewPage
+}) {
+  // Select active product to customize
+  const [selectedProductId, setSelectedProductId] = useState(() => {
+    if (currentProductId) return currentProductId;
+    if (products && products.length > 0) return products[0].id;
+    return '';
+  });
+
+  const activeProduct = products.find(p => p.id === selectedProductId || p.slug === selectedProductId) || products[0];
+
   // Theme state
   const [selectedThemeId, setSelectedThemeId] = useState('modern');
   
@@ -106,12 +133,27 @@ export default function LandingPageBuilder({ initialData, onSavePublish }) {
     if (initialData && Array.isArray(initialData.sections) && initialData.sections.length > 0) {
       return initialData;
     }
+    if (activeProduct?.advancedLayout && Array.isArray(activeProduct.advancedLayout.sections)) {
+      return activeProduct.advancedLayout;
+    }
     return {
       theme: 'modern',
       sections: INITIAL_SECTIONS,
       lastModified: new Date().toISOString()
     };
   });
+
+  // Sync layout state when active product changes
+  useEffect(() => {
+    if (activeProduct) {
+      if (activeProduct.advancedLayout && Array.isArray(activeProduct.advancedLayout.sections) && activeProduct.advancedLayout.sections.length > 0) {
+        setLayoutState(activeProduct.advancedLayout);
+        if (activeProduct.advancedLayout.theme) {
+          setSelectedThemeId(activeProduct.advancedLayout.theme);
+        }
+      }
+    }
+  }, [selectedProductId]);
 
   const [activeSectionId, setActiveSectionId] = useState(INITIAL_SECTIONS[0]?.id || '');
   const [previewMode, setPreviewMode] = useState('desktop'); // 'desktop' | 'mobile'
@@ -219,14 +261,17 @@ export default function LandingPageBuilder({ initialData, onSavePublish }) {
     setIsSaving(true);
     const finalPayload = {
       ...layoutState,
+      theme: selectedThemeId,
       lastModified: new Date().toISOString()
     };
 
     try {
+      const targetId = activeProduct?.id || selectedProductId;
+      if (targetId) {
+        await saveLandingPageAdvancedLayout(targetId, finalPayload);
+      }
       if (typeof onSavePublish === 'function') {
-        await onSavePublish(finalPayload);
-      } else {
-        console.log('[LandingPageBuilder] Layout saved & published successfully:', finalPayload);
+        await onSavePublish(targetId, finalPayload);
       }
       setIsSavedToast(true);
       setTimeout(() => setIsSavedToast(false), 3000);
@@ -245,21 +290,71 @@ export default function LandingPageBuilder({ initialData, onSavePublish }) {
       {/* Top Header Bar */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-0 z-30 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-sm">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
             <Layout className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-black text-slate-900 leading-tight">
-              مخصص القوالب والصفحات (Theme Customizer)
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-black text-slate-900 leading-tight">
+                مخصص القوالب والصفحات (Theme Customizer)
+              </h1>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                advancedLayout
+              </span>
+            </div>
             <p className="text-xs text-slate-500">
               تحكم بمرونة كاملة في أقسام صفحة الهبوط وتصميمها بدون أكواد
             </p>
           </div>
         </div>
 
-        {/* Viewport & Publish Actions */}
-        <div className="flex items-center gap-3">
+        {/* Page Selector & Viewport & Publish Actions */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Target Product / Landing Page Selector */}
+          {products && products.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs font-bold text-slate-600 hidden md:inline">الصفحة المستهدفة:</label>
+              <select
+                value={selectedProductId}
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  setSelectedProductId(newId);
+                  if (typeof onSelectProduct === 'function') {
+                    onSelectProduct(newId);
+                  }
+                }}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-emerald-600 focus:bg-white cursor-pointer max-w-[200px] truncate"
+              >
+                {products.map((p) => {
+                  const pName = typeof p.name === 'string' ? p.name : (p.name?.ar || p.slug);
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {pName} (/{p.slug})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
+          {/* Live Preview Shortcut */}
+          {activeProduct && (
+            <button
+              onClick={() => {
+                if (typeof onViewPage === 'function') {
+                  onViewPage(activeProduct);
+                } else {
+                  window.open(`/${activeProduct.slug}`, '_blank');
+                }
+              }}
+              title="معاينة الصفحة الحية كما يراها الزائر"
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">معاينة مباشرة</span>
+            </button>
+          )}
+
           {/* Device Preview Toggle */}
           <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
             <button

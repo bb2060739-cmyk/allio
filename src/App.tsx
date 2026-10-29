@@ -31,6 +31,7 @@ import { DesignEditor } from './components/dashboard/DesignEditor';
 import { OrdersManager } from './components/dashboard/OrdersManager';
 import { NewProductModal } from './components/dashboard/NewProductModal';
 import { PixelEventDebugger } from './components/dashboard/PixelEventDebugger';
+import LandingPageBuilder from './components/dashboard/LandingPageBuilder.jsx';
 import { PublicProductLanding } from './components/landing/PublicProductLanding';
 import { StorefrontCatalog } from './components/landing/StorefrontCatalog';
 import { ProductNotFound } from './components/landing/ProductNotFound';
@@ -470,9 +471,10 @@ function AdminRoute({
   onDataChange: () => void;
 }) {
   const navigate = useNavigate();
-  const [adminTab, setAdminTab] = useState<'overview' | 'stores' | 'products' | 'design' | 'orders'>('overview');
+  const [adminTab, setAdminTab] = useState<'overview' | 'stores' | 'products' | 'design' | 'builder' | 'orders'>('overview');
   const [designTargetStoreId, setDesignTargetStoreId] = useState<string | undefined>(undefined);
   const [designTargetProductId, setDesignTargetProductId] = useState<string | undefined>(undefined);
+  const [builderTargetProductId, setBuilderTargetProductId] = useState<string | undefined>(undefined);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isPixelDebuggerOpen, setIsPixelDebuggerOpen] = useState(false);
@@ -526,6 +528,7 @@ function AdminRoute({
                 {adminTab === 'overview' && 'لوحة التحكم والتحليلات'}
                 {adminTab === 'stores' && 'إدارة المتاجر والنيشات (Stores / Niches)'}
                 {adminTab === 'products' && 'إدارة صفحات الهبوط (Landing Pages)'}
+                {adminTab === 'builder' && 'مخصص القوالب وصفحات الهبوط (Theme Customizer)'}
                 {adminTab === 'design' && 'محرر التصميم والمحتوى (Design & Content Editor)'}
                 {adminTab === 'orders' && 'إدارة الطلبات الواردة (Orders)'}
               </h1>
@@ -609,8 +612,25 @@ function AdminRoute({
               setDesignTargetProductId(product.id);
               setAdminTab('design');
             }}
+            onOpenThemeBuilder={(product) => {
+              setBuilderTargetProductId(product.id);
+              setAdminTab('builder');
+            }}
             onOpenSettingsModal={handleOpenEdit}
             onViewLandingPage={(p) => navigate(`/${p.slug}`)}
+          />
+        )}
+
+        {/* Admin Tab: Theme Customizer (LandingPageBuilder) */}
+        {adminTab === 'builder' && (
+          <LandingPageBuilder
+            products={products}
+            currentProductId={builderTargetProductId}
+            onSelectProduct={(pId: string) => setBuilderTargetProductId(pId)}
+            onSavePublish={async () => {
+              onDataChange();
+            }}
+            onViewPage={(prod: Product) => navigate(`/${prod.slug}`)}
           />
         )}
 

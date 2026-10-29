@@ -540,6 +540,7 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
       storeId: productData.storeId !== undefined ? productData.storeId : (existing.storeId || 'store-default'),
       designConfig: productData.designConfig !== undefined ? productData.designConfig : (existing.designConfig || getDefaultDesignConfig(productData.name, productData.fullDescription)),
       blocks: productData.blocks && productData.blocks.length > 0 ? productData.blocks : existingBlocks,
+      advancedLayout: productData.advancedLayout !== undefined ? productData.advancedLayout : existing.advancedLayout,
       slug: slug || existing.slug || 'product-' + Date.now(),
       name: nameStr,
       shortDescription: shortDescStr,
@@ -569,6 +570,7 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
       storeId: productData.storeId || 'store-default',
       designConfig: productData.designConfig || getDefaultDesignConfig(nameStr, fullDescStr),
       blocks: initialBlocks,
+      advancedLayout: productData.advancedLayout,
       slug: slug || 'product-' + Date.now(),
       name: nameStr,
       price: Number(productData.price),
@@ -623,6 +625,68 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
   }
 
   return targetProduct;
+};
+
+/**
+ * Saves advancedLayout directly to Firestore product and landing_pages documents.
+ * Adheres strictly to zero auto-save and zero continuous listeners policy.
+ */
+export const saveLandingPageAdvancedLayout = async (productId: string, advancedLayout: any): Promise<Product | null> => {
+  await ensureAdminAuth();
+  const products = getProducts();
+  const index = products.findIndex(p => p.id === productId || p.slug === productId);
+  if (index === -1) {
+    console.error('[Firebase] Cannot save advancedLayout: Product not found:', productId);
+    return null;
+  }
+
+  const updatedProduct: Product = {
+    ...products[index],
+    advancedLayout,
+    updatedAt: new Date().toISOString()
+  };
+
+  products[index] = updatedProduct;
+  safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: updatedProduct }));
+    window.dispatchEvent(new CustomEvent('allio_landing_pages_updated', { detail: updatedProduct }));
+    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: updatedProduct } }));
+  }
+
+  // Single-write to Firestore documents with zero real-time listeners or auto-saving
+  try {
+    const productRef = doc(db, 'products', updatedProduct.id);
+    await updateDoc(productRef, {
+      advancedLayout,
+      updatedAt: updatedProduct.updatedAt
+    });
+  } catch (err) {
+    try {
+      const productRef = doc(db, 'products', updatedProduct.id);
+      await setDoc(productRef, updatedProduct, { merge: true });
+    } catch (setErr) {
+      console.warn('[Firebase] setDoc fallback error on products:', setErr);
+    }
+  }
+
+  try {
+    const lpRef = doc(db, 'landing_pages', updatedProduct.id);
+    await updateDoc(lpRef, {
+      advancedLayout,
+      updatedAt: updatedProduct.updatedAt
+    });
+  } catch (lpErr) {
+    try {
+      const lpRef = doc(db, 'landing_pages', updatedProduct.id);
+      await setDoc(lpRef, updatedProduct, { merge: true });
+    } catch {
+      // ignore
+    }
+  }
+
+  return updatedProduct;
 };
 
 export const deleteProduct = async (id: string): Promise<boolean> => {
