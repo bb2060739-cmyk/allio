@@ -5,13 +5,13 @@ import { useDynamicHead } from '../../utils/dynamicHead';
 import { 
   BarChart3, Layers, ShoppingCart, Activity, 
   ExternalLink, LogOut, ShieldCheck, UserCheck,
-  Store, Palette, Sparkles
+  Store, Palette
 } from 'lucide-react';
 
 interface AdminLayoutProps {
   user: AdminUser;
-  activeTab: 'overview' | 'stores' | 'products' | 'design' | 'builder' | 'orders';
-  onSelectTab: (tab: 'overview' | 'stores' | 'products' | 'design' | 'builder' | 'orders') => void;
+  activeTab: 'overview' | 'stores' | 'products' | 'design' | 'orders';
+  onSelectTab: (tab: 'overview' | 'stores' | 'products' | 'design' | 'orders') => void;
   onOpenCreateProduct: () => void;
   onTogglePixelDebugger: () => void;
   onNavigateToPublicStore: () => void;
@@ -96,18 +96,6 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             >
               <Layers className="w-4 h-4" />
               <span className="hidden md:inline">صفحات الهبوط</span>
-            </button>
-
-            <button
-              onClick={() => onSelectTab('builder')}
-              className={`px-3 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'builder'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span className="hidden md:inline">مخصص القوالب (Builder)</span>
             </button>
 
             <button

@@ -668,7 +668,6 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
       storeId: productData.storeId !== undefined ? productData.storeId : (existing.storeId || 'store-default'),
       designConfig: productData.designConfig !== undefined ? productData.designConfig : (existing.designConfig || getDefaultDesignConfig(productData.name, productData.fullDescription)),
       blocks: productData.blocks && productData.blocks.length > 0 ? productData.blocks : existingBlocks,
-      advancedLayout: productData.advancedLayout !== undefined ? productData.advancedLayout : existing.advancedLayout,
       slug: slug || existing.slug || 'product-' + Date.now(),
       name: nameStr,
       shortDescription: shortDescStr,
@@ -737,7 +736,6 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
       storeId: productData.storeId || 'store-default',
       designConfig: productData.designConfig || getDefaultDesignConfig(nameStr, fullDescStr),
       blocks: initialBlocks,
-      advancedLayout: productData.advancedLayout,
       slug: slug || 'product-' + Date.now(),
       name: nameStr,
       price: Number(productData.price),
@@ -810,73 +808,6 @@ export const saveProduct = async (productData: Partial<Product> & { name: Locali
   }
 
   return targetProduct;
-};
-
-/**
- * Saves advancedLayout directly to Firestore landing_pages and products documents using updateDoc with setDoc merge:true fallback.
- * Strictly adheres to zero auto-save and zero continuous listeners policy.
- */
-export const saveLandingPageAdvancedLayout = async (productId: string, advancedLayout: any): Promise<Product | null> => {
-  const products = getProducts();
-  const index = products.findIndex(p => p.id === productId || p.slug === productId);
-  if (index === -1) {
-    console.error('[Firebase Error] Cannot save advancedLayout: Product not found:', productId);
-    return null;
-  }
-
-  const updatedProduct: Product = {
-    ...products[index],
-    advancedLayout,
-    updatedAt: new Date().toISOString()
-  };
-
-  products[index] = updatedProduct;
-  safeLocalStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('allio_products_updated', { detail: updatedProduct }));
-    window.dispatchEvent(new CustomEvent('allio_landing_pages_updated', { detail: updatedProduct }));
-    window.dispatchEvent(new CustomEvent('allio_data_updated', { detail: { type: 'products', data: updatedProduct } }));
-  }
-
-  const cleanUpdate = sanitizeForFirestore({
-    advancedLayout,
-    updatedAt: updatedProduct.updatedAt
-  });
-
-  // Single-write to Firestore landing_pages document
-  try {
-    const lpRef = doc(db, 'landing_pages', updatedProduct.id);
-    await updateDoc(lpRef, cleanUpdate).catch(async () => {
-      await setDoc(lpRef, cleanUpdate, { merge: true });
-    });
-    console.log(`[Firebase] Successfully saved advancedLayout to landing_pages/${updatedProduct.id}`);
-  } catch (lpErr) {
-    console.error(`[Firebase Error] Error saving advancedLayout to landing_pages/${updatedProduct.id}:`, lpErr);
-    try {
-      await setDoc(doc(db, 'landing_pages', updatedProduct.id), cleanUpdate, { merge: true });
-    } catch (setErr) {
-      console.error('[Firebase Error] Fallback setDoc on landing_pages failed:', setErr);
-    }
-  }
-
-  // Single-write to Firestore products document
-  try {
-    const productRef = doc(db, 'products', updatedProduct.id);
-    await updateDoc(productRef, cleanUpdate).catch(async () => {
-      await setDoc(productRef, cleanUpdate, { merge: true });
-    });
-    console.log(`[Firebase] Successfully saved advancedLayout to products/${updatedProduct.id}`);
-  } catch (err) {
-    console.error(`[Firebase Error] Error saving advancedLayout to products/${updatedProduct.id}:`, err);
-    try {
-      await setDoc(doc(db, 'products', updatedProduct.id), cleanUpdate, { merge: true });
-    } catch (setErr) {
-      console.error('[Firebase Error] Fallback setDoc on products failed:', setErr);
-    }
-  }
-
-  return updatedProduct;
 };
 
 export const deleteProduct = async (id: string): Promise<boolean> => {
@@ -1178,16 +1109,14 @@ const broadcastMergedProducts = () => {
           ...existing,
           ...prod,
           images: (prod.images && prod.images.length > 0) ? prod.images : existing.images,
-          blocks: (prod.blocks && prod.blocks.length > 0) ? prod.blocks : existing.blocks,
-          advancedLayout: prod.advancedLayout || existing.advancedLayout
+          blocks: (prod.blocks && prod.blocks.length > 0) ? prod.blocks : existing.blocks
         });
       } else {
         mergedMap.set(id, {
           ...prod,
           ...existing,
           images: (existing.images && existing.images.length > 0) ? existing.images : prod.images,
-          blocks: (existing.blocks && existing.blocks.length > 0) ? existing.blocks : prod.blocks,
-          advancedLayout: existing.advancedLayout || prod.advancedLayout
+          blocks: (existing.blocks && existing.blocks.length > 0) ? existing.blocks : prod.blocks
         });
       }
     }

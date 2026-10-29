@@ -105,13 +105,6 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
   const headerCtaText = getLocalizedText(design.headerCtaText, currentLang);
   const stickyCtaText = getLocalizedText(design.stickyMobileCtaText, currentLang) || t('landing.sticky_order_btn');
 
-  // Check for dynamic section-based layout (JSON configuration)
-  const hasAdvancedLayout = Boolean(
-    product?.advancedLayout &&
-    Array.isArray(product.advancedLayout.sections) &&
-    product.advancedLayout.sections.length > 0
-  );
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-24 md:pb-12">
       {/* Top Announcement Bar (Dynamic Store-level Secondary Color & Text) */}
@@ -171,162 +164,7 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
 
       {/* Main Product Container */}
       <main className="max-w-5xl mx-auto px-4 pt-6 space-y-8">
-        {hasAdvancedLayout ? (
-          /* =========================================================================
-             1. DYNAMIC ADVANCED LAYOUT (Rendered from product.advancedLayout JSON)
-             ========================================================================= */
-          <div className="space-y-8">
-            {product.advancedLayout.sections.map((section: any, idx: number) => {
-              if (section.type === 'hero') {
-                return (
-                  <div
-                    key={section.id || `dyn-hero-${idx}`}
-                    className="rounded-3xl p-8 md:p-12 shadow-lg space-y-4 text-center transition-all overflow-hidden relative"
-                    style={{
-                      backgroundColor: section.backgroundColor || secondaryColor,
-                      color: section.textColor || '#ffffff'
-                    }}
-                  >
-                    <div className="max-w-3xl mx-auto space-y-4 relative z-10">
-                      {section.headline && (
-                        <h1 className="text-2xl md:text-4xl font-black leading-tight">
-                          {section.headline}
-                        </h1>
-                      )}
-                      {section.subheadline && (
-                        <p className="text-sm md:text-base opacity-90 max-w-2xl mx-auto leading-relaxed">
-                          {section.subheadline}
-                        </p>
-                      )}
-                      {section.imageUrl && (
-                        <div className="py-2 flex justify-center">
-                          <img
-                            src={section.imageUrl}
-                            alt={section.headline || 'Product'}
-                            className="max-h-72 w-auto rounded-2xl shadow-md object-contain"
-                          />
-                        </div>
-                      )}
-                      {section.buttonText && (
-                        <div className="pt-2">
-                          <button
-                            onClick={scrollToOrderForm}
-                            className="px-8 py-3.5 rounded-xl font-black text-sm shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-                            style={{
-                              backgroundColor: section.buttonColor || primaryColor,
-                              color: section.buttonTextColor || '#ffffff'
-                            }}
-                          >
-                            {section.buttonText}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
-              if (section.type === 'image_with_text') {
-                return (
-                  <div
-                    key={section.id || `dyn-iwt-${idx}`}
-                    className="rounded-3xl p-6 md:p-10 border border-slate-200/80 shadow-xs"
-                    style={{
-                      backgroundColor: section.backgroundColor || '#ffffff',
-                      color: section.textColor || '#1e293b'
-                    }}
-                  >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                      {section.imageUrl && (
-                        <img
-                          src={section.imageUrl}
-                          alt={section.headline || 'Product Highlight'}
-                          className="w-full h-80 object-cover rounded-2xl shadow-sm"
-                          loading="lazy"
-                        />
-                      )}
-                      <div className="space-y-4 text-start">
-                        <h2 className="text-2xl md:text-3xl font-black">{section.headline}</h2>
-                        <p className="text-sm md:text-base leading-relaxed opacity-90">{section.subheadline}</p>
-                        {section.buttonText && (
-                          <button
-                            onClick={scrollToOrderForm}
-                            className="px-6 py-2.5 rounded-xl font-bold shadow-xs cursor-pointer hover:opacity-95"
-                            style={{
-                              backgroundColor: section.buttonColor || primaryColor,
-                              color: section.buttonTextColor || '#ffffff'
-                            }}
-                          >
-                            {section.buttonText}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              if (section.type === 'features_grid') {
-                return (
-                  <div
-                    key={section.id || `dyn-grid-${idx}`}
-                    className="rounded-3xl p-6 md:p-10 border border-slate-200/80 shadow-xs text-center space-y-8"
-                    style={{
-                      backgroundColor: section.backgroundColor || '#f8fafc',
-                      color: section.textColor || '#0f172a'
-                    }}
-                  >
-                    <div className="max-w-2xl mx-auto space-y-2">
-                      <h2 className="text-2xl md:text-3xl font-black">{section.headline}</h2>
-                      {section.subheadline && (
-                        <p className="text-sm opacity-80">{section.subheadline}</p>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-start">
-                      {(section.features || []).map((feat: any, fIdx: number) => (
-                        <div key={fIdx} className="bg-white/90 p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-                          <h3 className="font-bold text-sm text-slate-900">{feat.title}</h3>
-                          <p className="text-xs text-slate-600 leading-relaxed">{feat.desc}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {section.buttonText && (
-                      <div className="pt-2">
-                        <button
-                          onClick={scrollToOrderForm}
-                          className="px-8 py-3 rounded-xl font-bold shadow-md cursor-pointer hover:opacity-95"
-                          style={{
-                            backgroundColor: section.buttonColor || primaryColor,
-                            color: section.buttonTextColor || '#ffffff'
-                          }}
-                        >
-                          {section.buttonText}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              return null;
-            })}
-
-            {/* Public COD Checkout Order Form */}
-            <div id="order-form-section" className="max-w-2xl mx-auto pt-6">
-              <MoroccanOrderForm
-                product={product}
-                onOrderSuccess={(order) => setCompletedOrder(order)}
-              />
-            </div>
-          </div>
-        ) : (
-          /* =========================================================================
-             2. LEGACY PAGE LAYOUT (Strict Backward Compatibility - 100% Preserved)
-             ========================================================================= */
-          <>
-            {/* Dynamic HERO SECTION (Smart Hiding if disabled or all text empty) */}
+        {/* Dynamic HERO SECTION (Smart Hiding if disabled or all text empty) */}
             {design.hero.enabled && Boolean(
               heroHeadline?.trim() ||
               heroSubheadline?.trim() ||
@@ -636,9 +474,7 @@ export const PublicProductLanding: React.FC<PublicProductLandingProps> = ({
             />
           </div>
         </div>
-      </>
-    )}
-  </main>
+      </main>
 
       {/* Dynamic Footer (Smart Hiding) */}
       {(() => {

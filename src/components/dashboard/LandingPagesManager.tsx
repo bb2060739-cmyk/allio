@@ -5,7 +5,7 @@ import { getLocalizedText } from '../../utils/i18n';
 import { 
   Plus, ExternalLink, Edit3, Trash2, Copy, 
   Check, Loader2, AlertTriangle, ShieldAlert, Database, X,
-  Store as StoreIcon, Palette, Filter, Sparkles
+  Store as StoreIcon, Palette, Filter
 } from 'lucide-react';
 
 interface LandingPagesManagerProps {
@@ -17,7 +17,6 @@ interface LandingPagesManagerProps {
   onViewLandingPage: (product: Product) => void;
   onCustomizeDesign: (product: Product) => void;
   onOpenSettingsModal?: (product: Product) => void;
-  onOpenThemeBuilder?: (product: Product) => void;
 }
 
 export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
@@ -28,8 +27,7 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
   onEditProduct,
   onViewLandingPage,
   onCustomizeDesign,
-  onOpenSettingsModal,
-  onOpenThemeBuilder
+  onOpenSettingsModal
 }) => {
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
@@ -313,16 +311,6 @@ export const LandingPagesManager: React.FC<LandingPagesManagerProps> = ({
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>تعديل الصفحة (Page Builder)</span>
                 </button>
-
-                {onOpenThemeBuilder && (
-                  <button
-                    onClick={() => onOpenThemeBuilder(product)}
-                    title="فتح مخصص القوالب السريع (Theme Customizer)"
-                    className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </button>
-                )}
 
                 <button
                   onClick={() => onViewLandingPage(product)}

@@ -165,7 +165,6 @@ export interface Product {
   salesCount: number;
   designConfig?: LandingPageDesignConfig;
   blocks?: LayoutBlock[]; // JSON array of layout blocks for the Visual Block-Based Page Builder
-  advancedLayout?: any; // New dynamic section-based layout JSON configuration
 }
 
 export type LayoutBlockType = 
