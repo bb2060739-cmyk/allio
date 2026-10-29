@@ -30,6 +30,7 @@ import { StoresManager } from './components/dashboard/StoresManager';
 import { DesignEditor } from './components/dashboard/DesignEditor';
 import { OrdersManager } from './components/dashboard/OrdersManager';
 import { NewProductModal } from './components/dashboard/NewProductModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { PixelEventDebugger } from './components/dashboard/PixelEventDebugger';
 import { PublicProductLanding } from './components/landing/PublicProductLanding';
 import { StorefrontCatalog } from './components/landing/StorefrontCatalog';
@@ -670,17 +671,25 @@ function AdminRoute({
         )}
       </div>
 
-      {/* Modal for Creating / Editing Landing Page */}
-      <NewProductModal
-        isOpen={isCreateModalOpen}
-        onClose={() => {
+      {/* Modal for Creating / Editing Landing Page with Error Boundary */}
+      <ErrorBoundary
+        fallbackTitle="Error loading page creator"
+        onReset={() => {
           setIsCreateModalOpen(false);
           setEditingProduct(null);
         }}
-        onSave={handleSaveProduct}
-        editingProduct={editingProduct}
-        stores={stores}
-      />
+      >
+        <NewProductModal
+          isOpen={isCreateModalOpen}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setEditingProduct(null);
+          }}
+          onSave={handleSaveProduct}
+          editingProduct={editingProduct}
+          stores={stores}
+        />
+      </ErrorBoundary>
 
       {/* Pixel Event Inspector Drawer */}
       <PixelEventDebugger

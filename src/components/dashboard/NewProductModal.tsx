@@ -3,6 +3,7 @@ import { Product, Store, LocalizedString } from '../../types';
 import { getLocalizedText } from '../../utils/i18n';
 import { X, Plus, Trash2, Tag, Store as StoreIcon, Upload, AlertCircle, Loader2 } from 'lucide-react';
 import { validateImageFile, processAndCompressImage, MAX_IMAGE_SIZE_MB } from '../../lib/imageOptimization';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 
 interface NewProductModalProps {
   isOpen: boolean;
@@ -12,7 +13,53 @@ interface NewProductModalProps {
   stores?: Store[];
 }
 
-export const NewProductModal: React.FC<NewProductModalProps> = ({
+/**
+ * Robust helper to safely normalize features into a string array.
+ * Defends against non-array values, objects, or nulls from Firestore.
+ */
+function normalizeFeatures(val: any): string[] {
+  if (Array.isArray(val)) {
+    const mapped = val
+      .map(item => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          return item.title || item.name || item.text || getLocalizedText(item) || '';
+        }
+        return item != null ? String(item) : '';
+      })
+      .filter(s => typeof s === 'string');
+    return mapped.length > 0 ? mapped : [''];
+  }
+  if (typeof val === 'string' && val.trim()) {
+    const lines = val.split('\n').map(s => s.trim()).filter(Boolean);
+    return lines.length > 0 ? lines : [val.trim()];
+  }
+  return [''];
+}
+
+/**
+ * Robust helper to safely normalize images into a string array.
+ * Defends against single URL strings, malformed objects, or undefined values.
+ */
+function normalizeImages(val: any): string[] {
+  if (Array.isArray(val)) {
+    return val
+      .map(item => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          return item.url || item.src || item.imageUrl || '';
+        }
+        return '';
+      })
+      .filter(url => typeof url === 'string' && url.trim().length > 0);
+  }
+  if (typeof val === 'string' && val.trim()) {
+    return [val.trim()];
+  }
+  return [];
+}
+
+const NewProductModalContent: React.FC<NewProductModalProps> = ({
   isOpen,
   onClose,
   onSave,
@@ -20,9 +67,12 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
   stores = []
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [storeId, setStoreId] = useState<string>('store-default');
-  
-  // Clean, lightweight single-language strings (auto-translated on frontend via DOM)
+
+  // Normalize stores prop safely
+  const safeStores = Array.isArray(stores) ? stores.filter(s => s && typeof s === 'object') : [];
+  const defaultInitialStoreId = safeStores.length > 0 && safeStores[0]?.id ? safeStores[0].id : 'store-default';
+
+  const [storeId, setStoreId] = useState<string>(defaultInitialStoreId);
   const [name, setName] = useState<string>('');
   const [slug, setSlug] = useState('');
   const [price, setPrice] = useState<number | ''>(299);
@@ -39,53 +89,62 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
   const [freeShipping, setFreeShipping] = useState(true);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (editingProduct) {
-      setStoreId(editingProduct.storeId || stores[0]?.id || 'store-default');
-      setName(getLocalizedText(editingProduct.name));
-      setSlug(editingProduct.slug || '');
-      setPrice(editingProduct.price);
-      setOriginalPrice(editingProduct.originalPrice || '');
-      setShortDescription(getLocalizedText(editingProduct.shortDescription));
-      setFullDescription(getLocalizedText(editingProduct.fullDescription));
-      setFeatures(
-        editingProduct.features && editingProduct.features.length > 0 
-          ? editingProduct.features.map(f => getLocalizedText(f)) 
-          : ['']
-      );
-      setImages(editingProduct.images || []);
-      setBadge(getLocalizedText(editingProduct.badge, 'ar', 'عرض خاص بالمغرب 🔥'));
-      setStockCount(editingProduct.stockCount || 10);
-      setFbPixelId(editingProduct.fbPixelId || '');
-      setTiktokPixelId(editingProduct.tiktokPixelId || '');
-      setFreeShipping(editingProduct.freeShipping !== false);
-    } else {
-      // Defaults for a new Moroccan COD landing page
-      setName('');
-      setSlug('');
-      setPrice(299);
-      setOriginalPrice(499);
-      setShortDescription('منتج عالي الجودة متوفر حصرياً مع خدمة الدفع عند الاستلام والتوصيل بالمجان.');
-      setFullDescription('مواصفات وتفاصيل المنتج الشاملة لضمان أفضل تجربة استخدام.');
-      setFeatures([
-        'جودة ممتازة معتمدة ومضمونة 100%',
-        'توصيل سريع إلى باب المنزل في جميع مدن المغرب',
-        'الدفع عند الاستلام بعد فحص المنتج والتأكد منه',
-        'ضمان الاستبدال أو الاسترجاع لمدة 14 يوماً'
-      ]);
-      setImages([
-        'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
-      ]);
-      setBadge('توصيل مجاني 🇲🇦');
-      setStockCount(12);
-      setFbPixelId('');
-      setTiktokPixelId('');
-      setFreeShipping(true);
+    try {
+      if (editingProduct) {
+        const initialStore = editingProduct.storeId || (safeStores.length > 0 ? safeStores[0]?.id : 'store-default');
+        setStoreId(initialStore || 'store-default');
+        setName(getLocalizedText(editingProduct.name) || '');
+        setSlug(editingProduct.slug || '');
+        setPrice(editingProduct.price !== undefined && editingProduct.price !== null ? Number(editingProduct.price) : 299);
+        setOriginalPrice(editingProduct.originalPrice ? Number(editingProduct.originalPrice) : '');
+        setShortDescription(getLocalizedText(editingProduct.shortDescription) || '');
+        setFullDescription(getLocalizedText(editingProduct.fullDescription) || '');
+        setFeatures(normalizeFeatures(editingProduct.features));
+        setImages(normalizeImages(editingProduct.images));
+        setBadge(getLocalizedText(editingProduct.badge, 'ar', 'عرض خاص بالمغرب 🔥'));
+        setStockCount(Number(editingProduct.stockCount) || 10);
+        setFbPixelId(editingProduct.fbPixelId || '');
+        setTiktokPixelId(editingProduct.tiktokPixelId || '');
+        setFreeShipping(editingProduct.freeShipping !== false);
+      } else {
+        // Defaults for a new Moroccan COD landing page
+        const fallbackStoreId = safeStores.length > 0 && safeStores[0]?.id ? safeStores[0].id : 'store-default';
+        setStoreId(fallbackStoreId);
+        setName('');
+        setSlug('');
+        setPrice(299);
+        setOriginalPrice(499);
+        setShortDescription('منتج عالي الجودة متوفر حصرياً مع خدمة الدفع عند الاستلام والتوصيل بالمجان.');
+        setFullDescription('مواصفات وتفاصيل المنتج الشاملة لضمان أفضل تجربة استخدام.');
+        setFeatures([
+          'جودة ممتازة معتمدة ومضمونة 100%',
+          'توصيل سريع إلى باب المنزل في جميع مدن المغرب',
+          'الدفع عند الاستلام بعد فحص المنتج والتأكد منه',
+          'ضمان الاستبدال أو الاسترجاع لمدة 14 يوماً'
+        ]);
+        setImages([
+          'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
+        ]);
+        setBadge('توصيل مجاني 🇲🇦');
+        setStockCount(12);
+        setFbPixelId('');
+        setTiktokPixelId('');
+        setFreeShipping(true);
+      }
+    } catch (err) {
+      console.error('[NewProductModal Error in useEffect]:', err);
     }
   }, [editingProduct, isOpen, stores]);
 
   if (!isOpen) return null;
+
+  // Defensive array access
+  const safeFeatures = Array.isArray(features) ? features : [''];
+  const safeImages = Array.isArray(images) ? images : [];
 
   const handleNameChange = (val: string) => {
     setName(val);
@@ -100,17 +159,17 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
   };
 
   const handleAddFeature = () => {
-    setFeatures([...features, '']);
+    setFeatures([...safeFeatures, '']);
   };
 
   const handleFeatureChange = (index: number, val: string) => {
-    const updated = [...features];
+    const updated = [...safeFeatures];
     updated[index] = val;
     setFeatures(updated);
   };
 
   const handleRemoveFeature = (index: number) => {
-    setFeatures(features.filter((_, i) => i !== index));
+    setFeatures(safeFeatures.filter((_, i) => i !== index));
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,8 +187,9 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
     try {
       setIsProcessingImage(true);
       const { dataUrl } = await processAndCompressImage(file);
-      setImages(prev => [...prev, dataUrl]);
+      setImages(prev => [...(Array.isArray(prev) ? prev : []), dataUrl]);
     } catch (err) {
+      console.error('[NewProductModal Image Upload Error]:', err);
       setImageUploadError(err instanceof Error ? err.message : 'فشل معالجة ورفع الصورة');
     } finally {
       setIsProcessingImage(false);
@@ -144,17 +204,14 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
         setImageUploadError('بيانات الصورة المدخلة تتجاوز 1 ميغابايت. يرجى اختيار صورة أصغر حجماً.');
         return;
       }
-      setImages([...images, imageUrl.trim()]);
+      setImages([...safeImages, imageUrl.trim()]);
       setImageUrl('');
     }
   };
 
   const handleRemoveImage = (index: number) => {
-    setImages(images.filter((_, i) => i !== index));
+    setImages(safeImages.filter((_, i) => i !== index));
   };
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,14 +224,14 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
       await onSave({
         id: editingProduct?.id,
         storeId,
-        name: name.trim(), // Stored as lightweight single string
+        name: name.trim(),
         slug: slug.trim() || 'product-' + Date.now(),
         price: Number(price),
         originalPrice: originalPrice ? Number(originalPrice) : undefined,
         shortDescription: shortDescription.trim(),
         fullDescription: fullDescription.trim(),
-        features: features.filter(f => f.trim().length > 0),
-        images: images.length > 0 ? images : [
+        features: safeFeatures.filter(f => typeof f === 'string' && f.trim().length > 0),
+        images: safeImages.length > 0 ? safeImages : [
           'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80'
         ],
         badge: badge.trim(),
@@ -213,6 +270,7 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
           <button
             onClick={onClose}
             className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+            aria-label="إغلاق النافذة"
           >
             <X className="w-5 h-5" />
           </button>
@@ -228,7 +286,7 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
             </h3>
 
             {/* Store / Niche selector */}
-            {stores && stores.length > 0 && (
+            {safeStores.length > 0 && (
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   المتجر / النيش التابع له <span className="text-red-500">*</span>
@@ -242,11 +300,15 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
                     onChange={(e) => setStoreId(e.target.value)}
                     className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-emerald-600 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white outline-none cursor-pointer"
                   >
-                    {stores.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.niche})
-                      </option>
-                    ))}
+                    {safeStores.map((s) => {
+                      const storeName = typeof s?.name === 'string' ? s.name : (getLocalizedText(s?.name) || 'متجر');
+                      const storeNiche = typeof s?.niche === 'string' ? s.niche : (getLocalizedText(s?.niche) || '');
+                      return (
+                        <option key={s.id} value={s.id}>
+                          {storeName} {storeNiche ? `(${storeNiche})` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -384,16 +446,16 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
             </div>
 
             <div className="space-y-2">
-              {features.map((feat, idx) => (
+              {safeFeatures.map((feat, idx) => (
                 <div key={idx} className="flex items-center gap-2">
                   <input
                     type="text"
-                    value={feat}
+                    value={typeof feat === 'string' ? feat : (feat != null ? String(feat) : '')}
                     onChange={(e) => handleFeatureChange(idx, e.target.value)}
                     placeholder={`ميزة رقم ${idx + 1}...`}
                     className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl outline-none focus:border-emerald-500"
                   />
-                  {features.length > 1 && (
+                  {safeFeatures.length > 1 && (
                     <button
                       type="button"
                       onClick={() => handleRemoveFeature(idx)}
@@ -482,31 +544,40 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
               </div>
             </div>
 
-            {images.length > 0 && (
+            {safeImages.length > 0 && (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 pt-2">
-                {images.map((img, idx) => (
-                  <div key={idx} className="relative group rounded-xl border border-slate-200 overflow-hidden bg-slate-50 p-1 flex items-center justify-center min-h-[90px]">
-                    <img
-                      src={img}
-                      alt={`Product image ${idx + 1}`}
-                      className="max-h-24 w-auto h-auto object-contain rounded-lg transition-transform group-hover:scale-105"
-                      loading="lazy"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveImage(idx)}
-                      className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity shadow-sm cursor-pointer"
-                      title="حذف الصورة"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                    {idx === 0 && (
-                      <span className="absolute bottom-1 left-1 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
-                        رئيسية
-                      </span>
-                    )}
-                  </div>
-                ))}
+                {safeImages.map((img, idx) => {
+                  const imgSrc = typeof img === 'string' ? img : (typeof img === 'object' && img !== null ? ((img as any).url || '') : '');
+                  if (!imgSrc) return null;
+
+                  return (
+                    <div key={idx} className="relative group rounded-xl border border-slate-200 overflow-hidden bg-slate-50 p-1 flex items-center justify-center min-h-[90px]">
+                      <img
+                        src={imgSrc}
+                        alt={`Product image ${idx + 1}`}
+                        className="max-h-24 w-auto h-auto object-contain rounded-lg transition-transform group-hover:scale-105"
+                        loading="lazy"
+                        onError={(e) => {
+                          console.warn('[NewProductModal Image Load Error]:', imgSrc);
+                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(idx)}
+                        className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity shadow-sm cursor-pointer"
+                        title="حذف الصورة"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                      {idx === 0 && (
+                        <span className="absolute bottom-1 left-1 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
+                          رئيسية
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -612,5 +683,23 @@ export const NewProductModal: React.FC<NewProductModalProps> = ({
         </form>
       </div>
     </div>
+  );
+};
+
+/**
+ * Self-healing export of NewProductModal wrapped in ErrorBoundary.
+ * Guarantees zero white-screen crashes even if rendering encounters an edge-case error.
+ */
+export const NewProductModal: React.FC<NewProductModalProps> = (props) => {
+  if (!props.isOpen) return null;
+
+  return (
+    <ErrorBoundary
+      fallbackTitle="Error loading page creator"
+      fallbackMessage="تعذر تحميل نافذة إنشاء صفحة الهبوط. يرجى إعادة المحاولة أو إغلاق النافذة."
+      onReset={props.onClose}
+    >
+      <NewProductModalContent {...props} />
+    </ErrorBoundary>
   );
 };
